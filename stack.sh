@@ -217,6 +217,14 @@ Q_PLUGIN=${Q_PLUGIN:-openvswitch}
 Q_PORT=${Q_PORT:-9696}
 # Default Quantum Host
 Q_HOST=${Q_HOST:-localhost}
+# Tunneling support.
+Q_TUNNEL_ENABLE=${Q_TUNNEL_ENABLE:-0}
+# Tunneling links.
+Q_TUNNEL_REMOTE_IP_FILE=${Q_TUNNEL_REMOTE_IP_FILE:-/dev/null}
+Q_TUNNEL_TUN_BRIDGE=${Q_TUNNEL_TUN_BRIDGE:-br-tun}
+Q_TUNNEL_INT_BRIDGE=${Q_TUNNEL_INT_BRIDGE:-br-int}
+
+
 
 # Default Melange Port
 M_PORT=${M_PORT:-9898}
@@ -667,6 +675,10 @@ if is_service_enabled horizon; then
 fi
 if is_service_enabled quantum; then
     git_clone $QUANTUM_CLIENT_REPO $QUANTUM_CLIENT_DIR $QUANTUM_CLIENT_BRANCH
+    if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
+        git_clone $QUANTUM_REPO $QUANTUM_DIR $QUANTUM_BRANCH
+    fi
+
 fi
 if is_service_enabled q-svc; then
     # quantum
@@ -1014,12 +1026,16 @@ fi
 
 # Quantum agent (for compute nodes)
 if is_service_enabled q-agt; then
+    QUANTUM_CONF_DIR=/etc/quantum
     if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
         # Set up integration bridge
         OVS_BRIDGE=${OVS_BRIDGE:-br-int}
         sudo ovs-vsctl --no-wait -- --if-exists del-br $OVS_BRIDGE
         sudo ovs-vsctl --no-wait add-br $OVS_BRIDGE
         sudo ovs-vsctl --no-wait br-set-external-id $OVS_BRIDGE bridge-id br-int
+        sudo ovs-vsctl --no-wait add-port $OVS_BRIDGE $Q_INTERFACE
+        sudo ifconfig $Q_INTERFACE up
+        sudo ifconfig $OVS_BRIDGE up
 
         # Start up the quantum <-> openvswitch agent
         QUANTUM_OVS_CONF_DIR=$QUANTUM_CONF_DIR/plugins/openvswitch
@@ -1029,6 +1045,18 @@ if is_service_enabled q-agt; then
             sudo mv $QUANTUM_DIR/etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini $QUANTUM_OVS_CONFIG_FILE
         fi
         sudo sed -i -e "s/^sql_connection =.*$/sql_connection = mysql:\/\/$MYSQL_USER:$MYSQL_PASSWORD@$MYSQL_HOST\/ovs_quantum?charset=utf8/g" $QUANTUM_OVS_CONFIG_FILE
+       if [[ "$Q_TUNNEL_ENABLE" = "1" ]]; then
+           sudo sed -i -e "s/^enable-tunneling =.*$/enable-tunneling = True/g"\
+	       $QUANTUM_OVS_CONFIG_FILE
+           sudo sed -i -e "s|^.*remote-ip-file =.*$|remote-ip-file = $Q_TUNNEL_REMOTE_IP_FILE|g"\
+               $QUANTUM_OVS_CONFIG_FILE
+           sudo sed -i -e "s|^.*tunnel-bridge =.*$|tunnel-bridge = $Q_TUNNEL_TUN_BRIDGE|g"\
+               $QUANTUM_OVS_CONFIG_FILE
+           sudo sed -i -e "s|^.*integration-bridge =.*$|integration-bridge = $Q_TUNNEL_INT_BRIDGE|g"\
+               $QUANTUM_OVS_CONFIG_FILE
+           sudo sed -i -e "s/^.*local-ip =.*$/local-ip = $HOST_IP/g" $QUANTUM_OVS_CONFIG_FILE
+       fi
+
         screen_it q-agt "sleep 4; sudo python $QUANTUM_DIR/quantum/plugins/openvswitch/agent/ovs_quantum_agent.py $QUANTUM_OVS_CONFIG_FILE -v"
     fi
 
@@ -1498,6 +1526,12 @@ if is_service_enabled quantum; then
         add_nova_opt "melange_port=$M_PORT"
     fi
     if is_service_enabled q-svc && [[ "$Q_PLUGIN" = "openvswitch" ]]; then
+        add_nova_opt "libvirt_vif_type=ethernet"
+        add_nova_opt "libvirt_vif_driver=nova.virt.libvirt.vif.LibvirtOpenVswitchDriver"
+        add_nova_opt "linuxnet_interface_driver=nova.network.linux_net.LinuxOVSInterfaceDriver"
+        add_nova_opt "quantum_use_dhcp=True"
+    fi
+    if is_service_enabled q-agt && [[ "$Q_PLUGIN" = "openvswitch" ]]; then
         add_nova_opt "libvirt_vif_type=ethernet"
         add_nova_opt "libvirt_vif_driver=nova.virt.libvirt.vif.LibvirtOpenVswitchDriver"
         add_nova_opt "linuxnet_interface_driver=nova.network.linux_net.LinuxOVSInterfaceDriver"
