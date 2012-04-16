@@ -672,6 +672,8 @@ fi
 if is_service_enabled horizon; then
     # django powered web control panel for openstack
     git_clone $HORIZON_REPO $HORIZON_DIR $HORIZON_BRANCH $HORIZON_TAG
+    # Fix webob version.
+    sed -i -e "s/^webob$/webob==1.0.8/g" $HORIZON_DIR/tools/pip-requires
 fi
 if is_service_enabled quantum; then
     git_clone $QUANTUM_CLIENT_REPO $QUANTUM_CLIENT_DIR $QUANTUM_CLIENT_BRANCH
@@ -877,7 +879,6 @@ screen -r stack -X hardstatus alwayslastline "$SCREEN_HARDSTATUS"
 # Setup the django horizon application to serve via apache/wsgi
 
 if is_service_enabled horizon; then
-
     # Remove stale session database.
     rm -f $HORIZON_DIR/openstack_dashboard/local/dashboard_openstack.sqlite3
 
@@ -1027,7 +1028,22 @@ fi
 # Quantum agent (for compute nodes)
 if is_service_enabled q-agt; then
     QUANTUM_CONF_DIR=/etc/quantum
+    if [[ ! -d $QUANTUM_CONF_DIR ]]; then
+      sudo mkdir -p $QUANTUM_CONF_DIR
+    fi
+    sudo chown `whoami` $QUANTUM_CONF_DIR
+
     if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
+        # Install deps
+        # FIXME add to files/apts/quantum, but don't install if not needed!
+        if [[ "$os_PACKAGE" = "deb" ]]; then
+            kernel_version=`cat /proc/version | cut -d " " -f3`
+            install_package openvswitch-switch openvswitch-datapath-dkms linux-headers-$kernel_version
+        else
+            ### FIXME(dtroyer): Find RPMs for OpenVSwitch
+            echo "OpenVSwitch packages need to be located"
+        fi
+
         # Set up integration bridge
         OVS_BRIDGE=${OVS_BRIDGE:-br-int}
         sudo ovs-vsctl --no-wait -- --if-exists del-br $OVS_BRIDGE
@@ -1039,7 +1055,11 @@ if is_service_enabled q-agt; then
 
         # Start up the quantum <-> openvswitch agent
         QUANTUM_OVS_CONF_DIR=$QUANTUM_CONF_DIR/plugins/openvswitch
-        mkdir -p $QUANTUM_OVS_CONF_DIR
+        if [[ ! -d $QUANTUM_OVS_CONF_DIR ]]; then
+            sudo mkdir -p $QUANTUM_OVS_CONF_DIR
+        fi
+        sudo chown `whoami` $QUANTUM_OVS_CONF_DIR
+
         QUANTUM_OVS_CONFIG_FILE=$QUANTUM_OVS_CONF_DIR/ovs_quantum_plugin.ini
         if [[ -e $QUANTUM_DIR/etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini ]]; then
             sudo mv $QUANTUM_DIR/etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini $QUANTUM_OVS_CONFIG_FILE
@@ -1161,6 +1181,20 @@ if is_service_enabled n-cpu; then
             echo "WARNING: Switching to QEMU"
             LIBVIRT_TYPE=qemu
         fi
+    fi
+
+    if [[ "$LIBVIRT_TYPE" == "qemu" ]]; then
+        sudo bash -c 'cat <<EOF >>/etc/libvirt/qemu.conf
+user = "root"
+group = "root"
+cgroup_device_acl = [
+  "/dev/null", "/dev/full", "/dev/zero",
+  "/dev/random", "/dev/urandom",
+  "/dev/ptmx", "/dev/kvm", "/dev/kqemu",
+  "/dev/rtc", "/dev/hpet", "/dev/net/tun",
+]
+EOF'
+      restart_service libvirt-bin
     fi
 
     # Install and configure **LXC** if specified.  LXC is another approach to
