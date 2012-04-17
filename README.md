@@ -1,3 +1,102 @@
+This project is a fork of Devstack for easy multinode installation of OpenStack,
+OpenVSwitch, and OpenFlow. It supports both OVS VLAN based virtual networking,
+and Ryu-based virtual network. Other OpenFlow controllers will be gradually
+added.
+
+I will try to keep it in sync with the upstream. If you had any problems, please
+file a bug.
+
+# How to install the controller node
+
+In project's root folder, run:
+
+    samples/of/gen-local.sh
+
+This scripts asks for some parameters, and generates the localrc for you. Then,
+run devstack to complete the installation:
+
+    ./stack.sh
+
+# How to install a compute node
+
+In project's root folder, run:
+
+    samples/of/gen-local.sh -a
+
+This scripts asks for some parameters, and generates the localrc for you. Then,
+run devstack to complete the installation:
+
+    ./stack.sh
+
+# Example Setup
+
+Suppose that we have a 2-node cluster:
+
+    @@@@@@@@@ HOST1 @@@@@@@@    @@@@@@@@ HOST2 @@@@@@@@
+    | (192.168.0.100)  eth0|----|eth0 (192.168.0.110) |
+    |                      |    |                     |
+    |                  eth1|----|eth1                 |
+    @@@@@@@@@@@@@@@@@@@@@@@@    @@@@@@@@@@@@@@@@@@@@@@@
+
+Each node has two interfaces, which are connected as drawn in the figure. eth0's
+are used for the control channels, and eth1 is used for connecting VMs. HOST1
+will be our controller/network/compute node, and HOST2 will be solely a compute
+node.
+
+NOTE: If you want to test it on VirtualBox, use the virtual box template
+uploaded on [my home page](http://www.cs.toronto.edu/~soheil/devstack-vbox.tbz2)
+
+## Install devstack on HOST1
+
+Run:
+
+    samples/of/gen-local.sh
+
+For our example, answer the question as below:
+
+    Please enter a password (this is going to be used for all services):
+    somepassword
+    Which interface should be used for vm connection (ie, eth0 eth1 )?
+    eth1
+    What's the ip address of this machine? [192.168.0.100]
+    192.168.0.100
+    Would you like to use OpenFlow? ([n]/y)
+    n
+
+If you want to have Ryu installed anser the last question by "y".
+
+Now, run `./stack.sh`! If the script runs sucessfully you should be able to
+login on horizon (192.168.0.100).
+
+## Install devstack on HOST2
+
+Run:
+
+    samples/of/gen-local.sh -a
+
+For our exmaple, answer the questions as:
+
+    Please enter a password (this is going to be used for all services):
+    somepassword
+    Which interface should be used for vm connection (ie, eth0 eth1 )?
+    eth1
+    What's the ip address of this machine? [192.168.0.110]
+    192.168.0.110
+    Would you like to use OpenFlow? ([n]/y)
+    n
+    What's the controller's ip address?
+    192.168.0.100
+
+If you want to install Ryu, answer 'y' to the OpenFlow question.
+
+# Copyleft
+
+There are two other forks, which I reused code from:
+https://github.com/davlaps/devstack/
+https://github.com/osrg/devstack/
+
+# Original DevStack Readme
+
 DevStack is a set of scripts and utilities to quickly deploy an OpenStack cloud.
 
 # Goals
