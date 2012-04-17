@@ -690,7 +690,7 @@ if is_service_enabled quantum; then
     fi
 
 fi
-if is_service_enabled q-svc; then
+if is_service_enabled q-svc || is_service_enabled q-agt; then
     # quantum
     git_clone $QUANTUM_REPO $QUANTUM_DIR $QUANTUM_BRANCH
 fi
