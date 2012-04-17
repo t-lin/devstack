@@ -43,8 +43,10 @@ are used for the control channels, and eth1 is used for connecting VMs. HOST1
 will be our controller/network/compute node, and HOST2 will be solely a compute
 node.
 
-NOTE: If you want to test it on VirtualBox, use the virtual box template
+**NOTE**: If you want to test it on VirtualBox, use the virtual box template
 uploaded on [my home page](http://www.cs.toronto.edu/~soheil/devstack-vbox.tbz2)
+and also make sure that you have disabled DHCP for vboxnet0
+(File/Preferences/Networks).
 
 ## Install devstack on HOST1
 
