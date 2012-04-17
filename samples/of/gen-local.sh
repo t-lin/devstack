@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# gen-local.sh generates localrc for devstack. It's an interactive script, and
+# supports the following options:
+#   -a) Creates loclrc for compute nodes.
+
 set -e
 
 function interfaces {
@@ -68,22 +72,50 @@ if [ $HOST_IP_READ ]; then
   HOST_IP=$HOST_IP_READ
 fi
 
+echo "Would you like to use OpenFlow? ([n]/y)"
+read USE_OF
+
+Q_PLUGIN=openvswitch
+if [[ "$USE_OF" == "y" ]]; then
+  echo "This version supports only Ryu."
+  Q_PLUGIN=ryu
+fi
+
 if [[ $AGENT == 0 ]]; then
   cp $OF_DIR/ctrl-localrc localrc
-  sed -i -e 's/\${PASSWORD}/'$PASSWORD'/g' localrc
-  sed -i -e 's/\${HOST_IP}/'$HOST_IP'/g' localrc
+  if [[ $USE_OF == "y" ]]; then
+    sed -i -e 's/RYU_ENABLED_//g' localrc
+  else
+    sed -i -e 's/RYU_ENABLED_/#/g' localrc
+  fi
+
   sed -i -e 's/\${FLAT_INTERFACE}/'$FLAT_INT'/g' localrc
+  sed -i -e 's/\${HOST_IP}/'$HOST_IP'/g' localrc
+  sed -i -e 's/\${PASSWORD}/'$PASSWORD'/g' localrc
+  sed -i -e 's/\${Q_PLUGIN}/'$Q_PLUGIN'/g' localrc
+  sed -i -e 's/\${RYU_HOST}/'$HOST_IP'/g' localrc
+
+  echo "localrc generated for the controller node."
 else
   echo "What's the controller's ip address?"
-  read CTRL_IP_ADDRESS
+  read CTRL_IP
 
   cp $OF_DIR/agent-localrc localrc
-  sed -i -e 's/\${PASSWORD}/'$PASSWORD'/g' localrc
-  sed -i -e 's/\${HOST_IP}/'$HOST_IP'/g' localrc
-  sed -i -e 's/\${CONTROLLER_HOST}/'$CTRL_IP_ADDRESS'/g' localrc
-  sed -i -e 's/\${FLAT_INTERFACE}/'$FLAT_INT'/g' localrc
 
-  echo "0"
+  if [[ $USE_OF == "y" ]]; then
+    sed -i -e 's/RYU_ENABLED_//g' localrc
+  else
+    sed -i -e 's/RYU_ENABLED_/#/g' localrc
+  fi
+
+  sed -i -e 's/\${CONTROLLER_HOST}/'$CTRL_IP'/g' localrc
+  sed -i -e 's/\${FLAT_INTERFACE}/'$FLAT_INT'/g' localrc
+  sed -i -e 's/\${HOST_IP}/'$HOST_IP'/g' localrc
+  sed -i -e 's/\${PASSWORD}/'$PASSWORD'/g' localrc
+  sed -i -e 's/\${Q_PLUGIN}/'$Q_PLUGIN'/g' localrc
+  sed -i -e 's/\${RYU_HOST}/'$CTRL_IP'/g' localrc
+
+  echo "localrc generated for a compute node."
 fi
 
 echo "Now run ./stack.sh"
