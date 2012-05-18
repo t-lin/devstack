@@ -12,6 +12,8 @@
 # demo                 admin     admin
 # demo                 demo      Member, anotherrole
 # invisible_to_admin   demo      Member
+# Tempest Only:
+# alt_demo             alt_demo  Member
 #
 # Variables set before calling this script:
 # SERVICE_TOKEN - aka admin_token in keystone.conf
@@ -56,19 +58,19 @@ ANOTHER_ROLE=$(get_id keystone role-create --name=anotherrole)
 
 
 # Add Roles to Users in Tenants
-keystone user-role-add --user $ADMIN_USER --role $ADMIN_ROLE --tenant_id $ADMIN_TENANT
-keystone user-role-add --user $ADMIN_USER --role $ADMIN_ROLE --tenant_id $DEMO_TENANT
-keystone user-role-add --user $DEMO_USER --role $ANOTHER_ROLE --tenant_id $DEMO_TENANT
+keystone user-role-add --user_id $ADMIN_USER --role_id $ADMIN_ROLE --tenant_id $ADMIN_TENANT
+keystone user-role-add --user_id $ADMIN_USER --role_id $ADMIN_ROLE --tenant_id $DEMO_TENANT
+keystone user-role-add --user_id $DEMO_USER --role_id $ANOTHER_ROLE --tenant_id $DEMO_TENANT
 
 # TODO(termie): these two might be dubious
-keystone user-role-add --user $ADMIN_USER --role $KEYSTONEADMIN_ROLE --tenant_id $ADMIN_TENANT
-keystone user-role-add --user $ADMIN_USER --role $KEYSTONESERVICE_ROLE --tenant_id $ADMIN_TENANT
+keystone user-role-add --user_id $ADMIN_USER --role_id $KEYSTONEADMIN_ROLE --tenant_id $ADMIN_TENANT
+keystone user-role-add --user_id $ADMIN_USER --role_id $KEYSTONESERVICE_ROLE --tenant_id $ADMIN_TENANT
 
 
 # The Member role is used by Horizon and Swift so we need to keep it:
 MEMBER_ROLE=$(get_id keystone role-create --name=Member)
-keystone user-role-add --user $DEMO_USER --role $MEMBER_ROLE --tenant_id $DEMO_TENANT
-keystone user-role-add --user $DEMO_USER --role $MEMBER_ROLE --tenant_id $INVIS_TENANT
+keystone user-role-add --user_id $DEMO_USER --role_id $MEMBER_ROLE --tenant_id $DEMO_TENANT
+keystone user-role-add --user_id $DEMO_USER --role_id $MEMBER_ROLE --tenant_id $INVIS_TENANT
 
 
 # Configure service users/roles
@@ -77,16 +79,16 @@ NOVA_USER=$(get_id keystone user-create --name=nova \
                                         --tenant_id $SERVICE_TENANT \
                                         --email=nova@example.com)
 keystone user-role-add --tenant_id $SERVICE_TENANT \
-                       --user $NOVA_USER \
-                       --role $ADMIN_ROLE
+                       --user_id $NOVA_USER \
+                       --role_id $ADMIN_ROLE
 
 GLANCE_USER=$(get_id keystone user-create --name=glance \
                                           --pass="$SERVICE_PASSWORD" \
                                           --tenant_id $SERVICE_TENANT \
                                           --email=glance@example.com)
 keystone user-role-add --tenant_id $SERVICE_TENANT \
-                       --user $GLANCE_USER \
-                       --role $ADMIN_ROLE
+                       --user_id $GLANCE_USER \
+                       --role_id $ADMIN_ROLE
 
 if [[ "$ENABLED_SERVICES" =~ "swift" ]]; then
     SWIFT_USER=$(get_id keystone user-create --name=swift \
@@ -94,8 +96,8 @@ if [[ "$ENABLED_SERVICES" =~ "swift" ]]; then
                                              --tenant_id $SERVICE_TENANT \
                                              --email=swift@example.com)
     keystone user-role-add --tenant_id $SERVICE_TENANT \
-                           --user $SWIFT_USER \
-                           --role $ADMIN_ROLE
+                           --user_id $SWIFT_USER \
+                           --role_id $ADMIN_ROLE
     # Nova needs ResellerAdmin role to download images when accessing
     # swift through the s3 api. The admin role in swift allows a user
     # to act as an admin for their tenant, but ResellerAdmin is needed
@@ -103,8 +105,8 @@ if [[ "$ENABLED_SERVICES" =~ "swift" ]]; then
     # configurable in swift-proxy.conf
     RESELLER_ROLE=$(get_id keystone role-create --name=ResellerAdmin)
     keystone user-role-add --tenant_id $SERVICE_TENANT \
-                           --user $NOVA_USER \
-                           --role $RESELLER_ROLE
+                           --user_id $NOVA_USER \
+                           --role_id $RESELLER_ROLE
 fi
 
 if [[ "$ENABLED_SERVICES" =~ "quantum" ]]; then
@@ -113,6 +115,16 @@ if [[ "$ENABLED_SERVICES" =~ "quantum" ]]; then
                                                --tenant_id $SERVICE_TENANT \
                                                --email=quantum@example.com)
     keystone user-role-add --tenant_id $SERVICE_TENANT \
-                           --user $QUANTUM_USER \
-                           --role $ADMIN_ROLE
+                           --user_id $QUANTUM_USER \
+                           --role_id $ADMIN_ROLE
+fi
+
+if [[ "$ENABLED_SERVICES" =~ "tempest" ]]; then
+    # Tempest has some tests that validate various authorization checks
+    # between two regular users in separate tenants
+    ALT_DEMO_TENANT=$(get_id keystone tenant-create --name=alt_demo)
+    ALT_DEMO_USER=$(get_id keystone user-create --name=alt_demo \
+                                        --pass="$ADMIN_PASSWORD" \
+                                        --email=alt_demo@example.com)
+    keystone user-role-add --user $ALT_DEMO_USER --role $MEMBER_ROLE --tenant_id $ALT_DEMO_TENANT
 fi

@@ -86,12 +86,18 @@ DEST=${DEST:-/opt/stack}
 
 # Warn users who aren't on an explicitly supported distro, but allow them to
 # override check and attempt installation with ``FORCE=yes ./stack``
-if [[ ! ${DISTRO} =~ (oneiric|precise|f16) ]]; then
+if [[ ! ${DISTRO} =~ (oneiric|precise|quantal|f16) ]]; then
     echo "WARNING: this script has been tested on oneiric, precise and f16"
     if [[ "$FORCE" != "yes" ]]; then
         echo "If you wish to run this script anyway run with FORCE=yes"
         exit 1
     fi
+fi
+
+if [ "${DISTRO}" = "oneiric" ] && is_service_enabled qpid ; then
+    # Qpid was introduced in precise
+    echo "You must use Ubuntu Precise or newer for Qpid support."
+    exit 1
 fi
 
 # Set the paths of certain binaries
@@ -201,9 +207,11 @@ OFFLINE=`trueorfalse False $OFFLINE`
 NOVA_DIR=$DEST/nova
 HORIZON_DIR=$DEST/horizon
 GLANCE_DIR=$DEST/glance
+GLANCECLIENT_DIR=$DEST/python-glanceclient
 KEYSTONE_DIR=$DEST/keystone
 NOVACLIENT_DIR=$DEST/python-novaclient
 KEYSTONECLIENT_DIR=$DEST/python-keystoneclient
+OPENSTACKCLIENT_DIR=$DEST/python-openstackclient
 NOVNC_DIR=$DEST/noVNC
 SWIFT_DIR=$DEST/swift
 QUANTUM_DIR=$DEST/quantum
@@ -355,7 +363,7 @@ TEST_FLOATING_RANGE=${TEST_FLOATING_RANGE:-192.168.253.0/29}
 # **MULTI_HOST** is a mode where each compute node runs its own network node.  This
 # allows network operations and routing for a VM to occur on the server that is
 # running the VM - removing a SPOF and bandwidth bottleneck.
-MULTI_HOST=${MULTI_HOST:-False}
+MULTI_HOST=`trueorfalse False $MULTI_HOST`
 
 # If you are using FlatDHCP on multiple hosts, set the ``FLAT_INTERFACE``
 # variable but make sure that the interface doesn't already have an
@@ -395,8 +403,8 @@ FLAT_INTERFACE=${FLAT_INTERFACE:-$GUEST_INTERFACE_DEFAULT}
 # host.
 
 
-# MySQL & RabbitMQ
-# ----------------
+# MySQL & (RabbitMQ or Qpid)
+# --------------------------
 
 # We configure Nova, Horizon, Glance and Keystone to use MySQL as their
 # database server.  While they share a single server, each has their own
@@ -414,8 +422,10 @@ read_password MYSQL_PASSWORD "ENTER A PASSWORD TO USE FOR MYSQL."
 BASE_SQL_CONN=${BASE_SQL_CONN:-mysql://$MYSQL_USER:$MYSQL_PASSWORD@$MYSQL_HOST}
 
 # Rabbit connection info
-RABBIT_HOST=${RABBIT_HOST:-localhost}
-read_password RABBIT_PASSWORD "ENTER A PASSWORD TO USE FOR RABBIT."
+if is_service_enabled rabbit; then
+    RABBIT_HOST=${RABBIT_HOST:-localhost}
+    read_password RABBIT_PASSWORD "ENTER A PASSWORD TO USE FOR RABBIT."
+fi
 
 # Glance connection info.  Note the port must be specified.
 GLANCE_HOSTPORT=${GLANCE_HOSTPORT:-$SERVICE_HOST:9292}
@@ -601,7 +611,16 @@ function get_packages() {
         if [[ -e ${package_dir}/${service} ]]; then
             file_to_parse="${file_to_parse} $service"
         fi
-        if [[ $service == n-* ]]; then
+        # NOTE(sdague) n-api needs glance for now because that's where
+        # glance client is
+        if [[ $service == n-api ]]; then
+            if [[ ! $file_to_parse =~ nova ]]; then
+                file_to_parse="${file_to_parse} nova"
+            fi
+            if [[ ! $file_to_parse =~ glance ]]; then
+                file_to_parse="${file_to_parse} glance"
+            fi
+        elif [[ $service == n-* ]]; then
             if [[ ! $file_to_parse =~ nova ]]; then
                 file_to_parse="${file_to_parse} nova"
             fi
@@ -659,6 +678,8 @@ git_clone $NOVA_REPO $NOVA_DIR $NOVA_BRANCH
 # python client library to nova that horizon (and others) use
 git_clone $KEYSTONECLIENT_REPO $KEYSTONECLIENT_DIR $KEYSTONECLIENT_BRANCH
 git_clone $NOVACLIENT_REPO $NOVACLIENT_DIR $NOVACLIENT_BRANCH
+git_clone $OPENSTACKCLIENT_REPO $OPENSTACKCLIENT_DIR $OPENSTACKCLIENT_BRANCH
+git_clone $GLANCECLIENT_REPO $GLANCECLIENT_DIR $GLANCECLIENT_BRANCH
 
 # glance, swift middleware and nova api needs keystone middleware
 if is_service_enabled key g-api n-api swift; then
@@ -676,6 +697,8 @@ fi
 if is_service_enabled n-novnc; then
     # a websockets/html5 or flash powered VNC console for vm instances
     git_clone $NOVNC_REPO $NOVNC_DIR $NOVNC_BRANCH
+    # Fix flag file problem.
+    sed -i -e "s/default_flagfile/default_cfgfile/g" $NOVNC_DIR/utils/nova-novncproxy
 fi
 if is_service_enabled horizon; then
     # django powered web control panel for openstack
@@ -712,6 +735,7 @@ fi
 # allowing ``import nova`` or ``import glance.client``
 cd $KEYSTONECLIENT_DIR; sudo python setup.py develop
 cd $NOVACLIENT_DIR; sudo python setup.py develop
+cd $OPENSTACKCLIENT_DIR; sudo python setup.py develop
 if is_service_enabled key g-api n-api swift; then
     cd $KEYSTONE_DIR; sudo python setup.py develop
 fi
@@ -741,6 +765,9 @@ if is_service_enabled ryu; then
     cd $RYU_DIR; sudo python setup.py develop
 fi
 
+# Do this _after_ glance is installed to override the old binary
+cd $GLANCECLIENT_DIR; sudo python setup.py develop
+
 
 # Syslog
 # ------
@@ -765,8 +792,8 @@ EOF
 fi
 
 
-# Rabbit
-# ------
+# Rabbit or Qpid
+# --------------
 
 if is_service_enabled rabbit; then
     # Install and start rabbitmq-server
@@ -781,6 +808,13 @@ if is_service_enabled rabbit; then
     fi
     # change the rabbit password since the default is "guest"
     sudo rabbitmqctl change_password guest $RABBIT_PASSWORD
+elif is_service_enabled qpid; then
+    if [[ "$os_PACKAGE" = "rpm" ]]; then
+        install_package qpid-cpp-server
+        restart_service qpidd
+    else
+        install_package qpidd
+    fi
 fi
 
 
@@ -823,15 +857,28 @@ EOF
     # Update the DB to give user ‘$MYSQL_USER’@’%’ full control of the all databases:
     sudo mysql -uroot -p$MYSQL_PASSWORD -h127.0.0.1 -e "GRANT ALL PRIVILEGES ON *.* TO '$MYSQL_USER'@'%' identified by '$MYSQL_PASSWORD';"
 
-    # Edit /etc/mysql/my.cnf to change ‘bind-address’ from localhost (127.0.0.1) to any (0.0.0.0) and restart the mysql service:
+    # Update ``my.cnf`` for some local needs and restart the mysql service
     if [[ "$os_PACKAGE" = "deb" ]]; then
-        MY_CNF=/etc/mysql/my.cnf
+        MY_CONF=/etc/mysql/my.cnf
         MYSQL=mysql
     else
-        MY_CNF=/etc/my.cnf
+        MY_CONF=/etc/my.cnf
         MYSQL=mysqld
     fi
-    sudo sed -i 's/127.0.0.1/0.0.0.0/g' $MY_CNF
+
+    # Change ‘bind-address’ from localhost (127.0.0.1) to any (0.0.0.0)
+    sudo sed -i '/^bind-address/s/127.0.0.1/0.0.0.0/g' $MY_CONF
+
+    # Set default db type to InnoDB
+    if grep -q "default-storage-engine" $MY_CONF; then
+        # Change it
+        sudo bash -c "source $TOP_DIR/functions; iniset $MY_CONF mysqld default-storage-engine InnoDB"
+    else
+        # Add it
+        sudo sed -i -e "/^\[mysqld\]/ a \
+default-storage-engine = InnoDB" $MY_CONF
+    fi
+
     restart_service $MYSQL
 fi
 
@@ -984,6 +1031,15 @@ if is_service_enabled g-reg; then
     iniset $GLANCE_API_CONF DEFAULT filesystem_store_datadir $GLANCE_IMAGE_DIR/
     iniset $GLANCE_API_CONF paste_deploy flavor keystone
 
+    # Store the images in swift if enabled.
+    if is_service_enabled swift; then
+        iniset $GLANCE_API_CONF DEFAULT default_store swift
+        iniset $GLANCE_API_CONF DEFAULT swift_store_auth_address $KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_SERVICE_PORT/v2.0/
+        iniset $GLANCE_API_CONF DEFAULT swift_store_user $SERVICE_TENANT_NAME:glance
+        iniset $GLANCE_API_CONF DEFAULT swift_store_key $SERVICE_PASSWORD
+        iniset $GLANCE_API_CONF DEFAULT swift_store_create_container_on_put True
+    fi
+
     GLANCE_API_PASTE_INI=$GLANCE_CONF_DIR/glance-api-paste.ini
     cp $GLANCE_DIR/etc/glance-api-paste.ini $GLANCE_API_PASTE_INI
     iniset $GLANCE_API_PASTE_INI filter:authtoken auth_host $KEYSTONE_AUTH_HOST
@@ -993,6 +1049,9 @@ if is_service_enabled g-reg; then
     iniset $GLANCE_API_PASTE_INI filter:authtoken admin_tenant_name $SERVICE_TENANT_NAME
     iniset $GLANCE_API_PASTE_INI filter:authtoken admin_user glance
     iniset $GLANCE_API_PASTE_INI filter:authtoken admin_password $SERVICE_PASSWORD
+
+    GLANCE_POLICY_JSON=$GLANCE_CONF_DIR/policy.json
+    cp $GLANCE_DIR/etc/policy.json $GLANCE_POLICY_JSON
 fi
 
 # Quantum
@@ -1025,26 +1084,75 @@ function create_mysqldb() {
     fi
 }
 
-# Quantum service
-if is_service_enabled q-svc; then
+if is_service_enabled quantum; then
+    # Put config files in /etc/quantum for everyone to find
     QUANTUM_CONF_DIR=/etc/quantum
     if [[ ! -d $QUANTUM_CONF_DIR ]]; then
         sudo mkdir -p $QUANTUM_CONF_DIR
     fi
     sudo chown `whoami` $QUANTUM_CONF_DIR
+
+    # Set default values when using Linux Bridge plugin
+    if [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
+        # set the config file
+        QUANTUM_LB_CONF_DIR=$QUANTUM_CONF_DIR/plugins/linuxbridge
+        mkdir -p $QUANTUM_LB_CONF_DIR
+        QUANTUM_LB_CONFIG_FILE=$QUANTUM_LB_CONF_DIR/linuxbridge_conf.ini
+        # must remove this file from existing location, otherwise Quantum will prefer it
+        if [[ -e $QUANTUM_DIR/etc/quantum/plugins/linuxbridge/linuxbridge_conf.ini ]]; then
+            sudo mv $QUANTUM_DIR/etc/quantum/plugins/linuxbridge/linuxbridge_conf.ini $QUANTUM_LB_CONFIG_FILE
+        fi
+        #set the default network interface
+        QUANTUM_LB_PRIVATE_INTERFACE=${QUANTUM_LB_PRIVATE_INTERFACE:-$GUEST_INTERFACE_DEFAULT}
+    fi
+fi
+# Quantum service
+if is_service_enabled q-svc; then
+    QUANTUM_PLUGIN_INI_FILE=$QUANTUM_CONF_DIR/plugins.ini
+    # must remove this file from existing location, otherwise Quantum will prefer it
+    if [[ -e $QUANTUM_DIR/etc/plugins.ini ]]; then
+        sudo mv $QUANTUM_DIR/etc/plugins.ini $QUANTUM_PLUGIN_INI_FILE
+    fi
+
     if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
         install_ovs
         create_mysqldb ovs_quantum
 
+        QUANTUM_OVS_CONF_DIR=$QUANTUM_CONF_DIR/plugins/openvswitch
+        QUANTUM_OVS_CONFIG_FILE=$QUANTUM_OVS_CONF_DIR/ovs_quantum_plugin.ini
         QUANTUM_PLUGIN_INI_FILE=$QUANTUM_CONF_DIR/plugins.ini
+
         # must remove this file from existing location, otherwise Quantum will prefer it
         if [[ -e $QUANTUM_DIR/etc/plugins.ini ]]; then
             sudo mv $QUANTUM_DIR/etc/plugins.ini $QUANTUM_PLUGIN_INI_FILE
         fi
         # Make sure we're using the openvswitch plugin
         sudo sed -i -e "s/^provider =.*$/provider = quantum.plugins.openvswitch.ovs_quantum_plugin.OVSQuantumPlugin/g" $QUANTUM_PLUGIN_INI_FILE
-    fi
-    if [[ "$Q_PLUGIN" = "ryu" ]]; then
+    elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
+        # Install deps
+        # FIXME add to files/apts/quantum, but don't install if not needed!
+        install_package python-configobj
+        # Create database for the plugin/agent
+        if is_service_enabled mysql; then
+            mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'DROP DATABASE IF EXISTS quantum_linux_bridge;'
+            mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'CREATE DATABASE IF NOT EXISTS quantum_linux_bridge;'
+            if grep -Fxq "user = " $QUANTUM_LB_CONFIG_FILE
+            then
+                sudo sed -i -e "s/^connection = sqlite$/#connection = sqlite/g" $QUANTUM_LB_CONFIG_FILE
+                sudo sed -i -e "s/^#connection = mysql$/connection = mysql/g" $QUANTUM_LB_CONFIG_FILE
+                sudo sed -i -e "s/^user = .*$/user = $MYSQL_USER/g" $QUANTUM_LB_CONFIG_FILE
+                sudo sed -i -e "s/^pass = .*$/pass = $MYSQL_PASSWORD/g" $QUANTUM_LB_CONFIG_FILE
+                sudo sed -i -e "s/^host = .*$/host = $MYSQL_HOST/g" $QUANTUM_LB_CONFIG_FILE
+            else
+                sudo sed -i -e "s/^sql_connection =.*$/sql_connection = mysql:\/\/$MYSQL_USER:$MYSQL_PASSWORD@$MYSQL_HOST\/quantum_linux_bridge?charset=utf8/g" $QUANTUM_LB_CONFIG_FILE
+            fi
+        else
+            echo "mysql must be enabled in order to use the $Q_PLUGIN Quantum plugin."
+            exit 1
+        fi
+        # Make sure we're using the linuxbridge plugin
+        sudo sed -i -e "s/^provider =.*$/provider = quantum.plugins.linuxbridge.LinuxBridgePlugin.LinuxBridgePlugin/g" $QUANTUM_PLUGIN_INI_FILE
+    elif [[ "$Q_PLUGIN" = "ryu" ]]; then
         install_ovs
         create_mysqldb ovs_quantum
 
@@ -1150,8 +1258,23 @@ if is_service_enabled q-agt; then
        fi
 
         screen_it q-agt "sleep 4; sudo python $QUANTUM_DIR/quantum/plugins/openvswitch/agent/ovs_quantum_agent.py $QUANTUM_OVS_CONFIG_FILE -v"
-    fi
-    if [[ "$Q_PLUGIN" = "ryu" ]]; then
+    elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
+       # Start up the quantum <-> linuxbridge agent
+       install_package bridge-utils
+       sudo sed -i -e "s/^physical_interface = .*$/physical_interface = $QUANTUM_LB_PRIVATE_INTERFACE/g" $QUANTUM_LB_CONFIG_FILE
+       if grep -Fxq "user = " $QUANTUM_LB_CONFIG_FILE
+       then
+           sudo sed -i -e "s/^connection = sqlite$/#connection = sqlite/g" $QUANTUM_LB_CONFIG_FILE
+           sudo sed -i -e "s/^#connection = mysql$/connection = mysql/g" $QUANTUM_LB_CONFIG_FILE
+           sudo sed -i -e "s/^user = .*$/user = $MYSQL_USER/g" $QUANTUM_LB_CONFIG_FILE
+           sudo sed -i -e "s/^pass = .*$/pass = $MYSQL_PASSWORD/g" $QUANTUM_LB_CONFIG_FILE
+           sudo sed -i -e "s/^host = .*$/host = $MYSQL_HOST/g" $QUANTUM_LB_CONFIG_FILE
+       else
+           sudo sed -i -e "s/^sql_connection =.*$/sql_connection = mysql:\/\/$MYSQL_USER:$MYSQL_PASSWORD@$MYSQL_HOST\/quantum_linux_bridge?charset=utf8/g" $QUANTUM_LB_CONFIG_FILE
+       fi
+
+       screen_it q-agt "sleep 4; sudo python $QUANTUM_DIR/quantum/plugins/linuxbridge/agent/linuxbridge_quantum_agent.py $QUANTUM_LB_CONFIG_FILE -v"
+    elif [[ "$Q_PLUGIN" = "ryu" ]]; then
         install_ovs
 
         # Set up integration bridge
@@ -1222,6 +1345,8 @@ if [[ ! -d $NOVA_CONF_DIR ]]; then
     sudo mkdir -p $NOVA_CONF_DIR
 fi
 sudo chown `whoami` $NOVA_CONF_DIR
+
+cp -p $NOVA_DIR/etc/nova/policy.json $NOVA_CONF_DIR
 
 if is_service_enabled n-api; then
     # Use the sample http middleware configuration supplied in the
@@ -1671,6 +1796,11 @@ if is_service_enabled quantum; then
         add_nova_opt "libvirt_vif_driver=nova.virt.libvirt.vif.LibvirtOpenVswitchDriver"
         add_nova_opt "linuxnet_interface_driver=nova.network.linux_net.LinuxOVSInterfaceDriver"
         add_nova_opt "quantum_use_dhcp=True"
+    elif is_service_enabled q-svc && [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
+        add_nova_opt "libvirt_vif_type=ethernet"
+        add_nova_opt "libvirt_vif_driver=nova.virt.libvirt.vif.QuantumLinuxBridgeVIFDriver"
+        add_nova_opt "linuxnet_interface_driver=nova.network.linux_net.QuantumLinuxBridgeInterfaceDriver"
+        add_nova_opt "quantum_use_dhcp=True"
     fi
     if is_service_enabled q-svc && [[ "$Q_PLUGIN" = "ryu" ]]; then
         add_nova_opt "libvirt_vif_type=ethernet"
@@ -1701,7 +1831,7 @@ else
 fi
 if is_service_enabled n-vol; then
     add_nova_opt "volume_group=$VOLUME_GROUP"
-    add_nova_opt "volume_name_template=${VOLUME_NAME_PREFIX}%08x"
+    add_nova_opt "volume_name_template=${VOLUME_NAME_PREFIX}%s"
     # oneiric no longer supports ietadm
     add_nova_opt "iscsi_helper=tgtadm"
 fi
@@ -1737,8 +1867,12 @@ add_nova_opt "vncserver_proxyclient_address=$VNCSERVER_PROXYCLIENT_ADDRESS"
 add_nova_opt "api_paste_config=$NOVA_CONF_DIR/api-paste.ini"
 add_nova_opt "image_service=nova.image.glance.GlanceImageService"
 add_nova_opt "ec2_dmz_host=$EC2_DMZ_HOST"
-add_nova_opt "rabbit_host=$RABBIT_HOST"
-add_nova_opt "rabbit_password=$RABBIT_PASSWORD"
+if is_service_enabled rabbit ; then
+    add_nova_opt "rabbit_host=$RABBIT_HOST"
+    add_nova_opt "rabbit_password=$RABBIT_PASSWORD"
+elif is_service_enabled qpid ; then
+    add_nova_opt "rpc_backend=nova.rpc.impl_qpid"
+fi
 add_nova_opt "glance_api_servers=$GLANCE_HOSTPORT"
 add_nova_opt "force_dhcp_release=True"
 if [ -n "$INSTANCES_PATH" ]; then
@@ -1850,7 +1984,6 @@ if is_service_enabled key; then
     # Rewrite stock keystone.conf:
     iniset $KEYSTONE_CONF DEFAULT admin_token "$SERVICE_TOKEN"
     iniset $KEYSTONE_CONF sql connection "$BASE_SQL_CONN/keystone?charset=utf8"
-    iniset $KEYSTONE_CONF catalog template_file "$KEYSTONE_CATALOG"
     iniset $KEYSTONE_CONF ec2 driver "keystone.contrib.ec2.backends.sql.Ec2"
     # Configure keystone.conf to use templates
     iniset $KEYSTONE_CONF catalog driver "keystone.catalog.backends.templated.TemplatedCatalog"
@@ -1898,7 +2031,7 @@ if is_service_enabled key; then
     # launch keystone and wait for it to answer before continuing
     screen_it key "cd $KEYSTONE_DIR && $KEYSTONE_DIR/bin/keystone-all --config-file $KEYSTONE_CONF $KEYSTONE_LOG_CONFIG -d --debug"
     echo "Waiting for keystone to start..."
-    if ! timeout $SERVICE_TIMEOUT sh -c "while http_proxy= wget -O- $KEYSTONE_AUTH_PROTOCOL://$SERVICE_HOST:$KEYSTONE_API_PORT/v2.0/ 2>&1 | grep -q 'refused'; do sleep 1; done"; then
+    if ! timeout $SERVICE_TIMEOUT sh -c "while ! http_proxy= wget -O- $KEYSTONE_AUTH_PROTOCOL://$SERVICE_HOST:$KEYSTONE_API_PORT/v2.0/ 2>&1 | grep -q '200 OK'; do sleep 1; done"; then
       echo "keystone did not start"
       exit 1
     fi
@@ -2046,21 +2179,19 @@ if is_service_enabled g-reg; then
         esac
 
         if [ "$CONTAINER_FORMAT" = "bare" ]; then
-            glance add --silent-upload -A $TOKEN name="$IMAGE_NAME" is_public=true container_format=$CONTAINER_FORMAT disk_format=$DISK_FORMAT < <(zcat --force "${IMAGE}")
+            glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$IMAGE_NAME" --public --container-format=$CONTAINER_FORMAT --disk-format $DISK_FORMAT < <(zcat --force "${IMAGE}")
         else
             # Use glance client to add the kernel the root filesystem.
             # We parse the results of the first upload to get the glance ID of the
             # kernel for use when uploading the root filesystem.
             KERNEL_ID=""; RAMDISK_ID="";
             if [ -n "$KERNEL" ]; then
-                RVAL=`glance add --silent-upload -A $TOKEN name="$IMAGE_NAME-kernel" is_public=true container_format=aki disk_format=aki < "$KERNEL"`
-                KERNEL_ID=`echo $RVAL | cut -d":" -f2 | tr -d " "`
+                KERNEL_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$IMAGE_NAME-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
             fi
             if [ -n "$RAMDISK" ]; then
-                RVAL=`glance add --silent-upload -A $TOKEN name="$IMAGE_NAME-ramdisk" is_public=true container_format=ari disk_format=ari < "$RAMDISK"`
-                RAMDISK_ID=`echo $RVAL | cut -d":" -f2 | tr -d " "`
+                RAMDISK_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$IMAGE_NAME-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
             fi
-            glance add -A $TOKEN name="${IMAGE_NAME%.img}" is_public=true container_format=ami disk_format=ami ${KERNEL_ID:+kernel_id=$KERNEL_ID} ${RAMDISK_ID:+ramdisk_id=$RAMDISK_ID} < <(zcat --force "${IMAGE}")
+            glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "${IMAGE_NAME%.img}" --public --container-format ami --disk-format ami ${KERNEL_ID:+--property kernel_id=$KERNEL_ID} ${RAMDISK_ID:+--property ramdisk_id=$RAMDISK_ID} < "${IMAGE}"
         fi
     done
 fi

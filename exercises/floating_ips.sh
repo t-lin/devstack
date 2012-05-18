@@ -63,10 +63,10 @@ nova list
 nova image-list
 
 # But we recommend using glance directly
-glance -f index
+glance image-list
 
 # Grab the id of the image to launch
-IMAGE=`glance -f index | egrep $DEFAULT_IMAGE_NAME | head -1 | cut -d" " -f1`
+IMAGE=$(glance image-list | egrep " $DEFAULT_IMAGE_NAME " | get_field 1)
 
 # Security Groups
 # ---------------
@@ -121,8 +121,8 @@ IP=`nova show $VM_UUID | grep "private network" | get_field 2`
 die_if_not_set IP "Failure retrieving IP address"
 
 # for single node deployments, we can ping private ips
-MULTI_HOST=${MULTI_HOST:-0}
-if [ "$MULTI_HOST" = "0" ]; then
+MULTI_HOST=`trueorfalse False $MULTI_HOST`
+if [ "$MULTI_HOST" = "False" ]; then
     # sometimes the first ping fails (10 seconds isn't enough time for the VM's
     # network to respond?), so let's ping for a default of 15 seconds with a
     # timeout of a second for each ping.

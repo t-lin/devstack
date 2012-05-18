@@ -1,5 +1,5 @@
 dnsmasq-base
-dnsmasq-utils # for dhcp_release only available in dist:oneiric,precise
+dnsmasq-utils # for dhcp_release only available in dist:oneiric,precise,quantal
 kpartx
 parted
 arping # only available in dist:natty
@@ -19,6 +19,7 @@ libvirt-bin # NOPRIME
 vlan
 curl
 rabbitmq-server # NOPRIME
+qpidd # NOPRIME
 socat # used by ajaxterm
 python-mox
 python-paste
@@ -42,3 +43,4 @@ python-boto
 python-kombu
 python-feedparser
 python-iso8601
+python-qpid # dist:precise

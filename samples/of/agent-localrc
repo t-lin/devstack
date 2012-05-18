@@ -1,4 +1,4 @@
-ENABLED_SERVICES=n-cpu,n-api,n-novnc,quantum,q-agt
+ENABLED_SERVICES=n-cpu,n-api,n-novnc,quantum,q-agt,rabbit
 
 MYSQL_PASSWORD=${PASSWORD}
 RABBIT_PASSWORD=${PASSWORD}
