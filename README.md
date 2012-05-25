@@ -46,6 +46,10 @@ are used for the control channels, and eth1 is used for connecting VMs. HOST1
 will be our controller/network/compute node, and HOST2 will be solely a compute
 node.
 
+**NOTE**: It is strongly recommended to use static IPs on the physical
+interfaces. If you use DHCP on any desktop distribution (e.g., Ubuntu Desktop),
+make sure you uninstall the `network-manager` package.
+
 **NOTE**: If you want to test it on VirtualBox, use the virtual box template
 uploaded on [my home page](http://www.cs.toronto.edu/~soheil/devstack-vbox.tbz2)
 and also make sure that you have disabled DHCP for vboxnet0
