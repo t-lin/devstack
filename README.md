@@ -6,8 +6,7 @@ added.
 I will try to keep it in sync with the upstream. If you had any problems, please
 file a bug.
 
-This verison is only tested on Ubuntu 12.04 Beta 2. Use other versions at your
-risk.
+This verison is only tested on Ubuntu 12.04. Use other versions at your risk.
 
 # How to install the controller node
 
