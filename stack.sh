@@ -214,11 +214,11 @@ KEYSTONECLIENT_DIR=$DEST/python-keystoneclient
 OPENSTACKCLIENT_DIR=$DEST/python-openstackclient
 NOVNC_DIR=$DEST/noVNC
 SWIFT_DIR=$DEST/swift
+SWIFT3_DIR=$DEST/swift3
 QUANTUM_DIR=$DEST/quantum
 QUANTUM_CLIENT_DIR=$DEST/python-quantumclient
 MELANGE_DIR=$DEST/melange
 MELANGECLIENT_DIR=$DEST/python-melangeclient
-RYU_DIR=$DEST/ryu
 
 # Default Quantum Plugin
 Q_PLUGIN=${Q_PLUGIN:-openvswitch}
@@ -226,12 +226,6 @@ Q_PLUGIN=${Q_PLUGIN:-openvswitch}
 Q_PORT=${Q_PORT:-9696}
 # Default Quantum Host
 Q_HOST=${Q_HOST:-localhost}
-# Tunneling support.
-Q_TUNNEL_ENABLE=${Q_TUNNEL_ENABLE:-0}
-# Tunneling links.
-Q_TUNNEL_REMOTE_IP_FILE=${Q_TUNNEL_REMOTE_IP_FILE:-/dev/null}
-Q_TUNNEL_TUN_BRIDGE=${Q_TUNNEL_TUN_BRIDGE:-br-tun}
-Q_TUNNEL_INT_BRIDGE=${Q_TUNNEL_INT_BRIDGE:-br-int}
 
 # Default Melange Port
 M_PORT=${M_PORT:-9898}
@@ -239,15 +233,6 @@ M_PORT=${M_PORT:-9898}
 M_HOST=${M_HOST:-localhost}
 # Melange MAC Address Range
 M_MAC_RANGE=${M_MAC_RANGE:-FE-EE-DD-00-00-00/24}
-
-# Ryu API Host
-RYU_API_HOST=${RYU_API_HOST:-127.0.0.1}
-# Ryu API Port
-RYU_API_PORT=${RYU_API_PORT:-8080}
-# Ryu OFP Host
-RYU_OFP_HOST=${RYU_OFP_HOST:-127.0.0.1}
-# Ryu OFP Port
-RYU_OFP_PORT=${RYU_OFP_PORT:-6633}
 
 # Name of the lvm volume group to use/create for iscsi volumes
 VOLUME_GROUP=${VOLUME_GROUP:-nova-volumes}
@@ -689,6 +674,7 @@ fi
 if is_service_enabled swift; then
     # storage service
     git_clone $SWIFT_REPO $SWIFT_DIR $SWIFT_BRANCH
+    git_clone $SWIFT3_REPO $SWIFT3_DIR $SWIFT3_BRANCH
 fi
 if is_service_enabled g-api n-api; then
     # image catalog service
@@ -698,22 +684,17 @@ if is_service_enabled n-novnc; then
     # a websockets/html5 or flash powered VNC console for vm instances
     git_clone $NOVNC_REPO $NOVNC_DIR $NOVNC_BRANCH
     # Fix flag file problem.
-    sed -i -e "s/default_flagfile/default_cfgfile/g" $NOVNC_DIR/utils/nova-novncproxy
+    sed -i -e "s/^.*utils.default_cfgfile.*$//g" $NOVNC_DIR/utils/nova-novncproxy
+    sed -i -e "s/FLAGS(sys.argv)/flags.parse_args(sys.argv)/g" $NOVNC_DIR/utils/nova-novncproxy
 fi
 if is_service_enabled horizon; then
     # django powered web control panel for openstack
     git_clone $HORIZON_REPO $HORIZON_DIR $HORIZON_BRANCH $HORIZON_TAG
-    # Fix webob version.
-    sed -i -e "s/^webob$/webob==1.0.8/g" $HORIZON_DIR/tools/pip-requires
 fi
 if is_service_enabled quantum; then
     git_clone $QUANTUM_CLIENT_REPO $QUANTUM_CLIENT_DIR $QUANTUM_CLIENT_BRANCH
-    if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
-        git_clone $QUANTUM_REPO $QUANTUM_DIR $QUANTUM_BRANCH
-    fi
-
 fi
-if is_service_enabled q-svc || is_service_enabled q-agt; then
+if is_service_enabled quantum; then
     # quantum
     git_clone $QUANTUM_REPO $QUANTUM_DIR $QUANTUM_BRANCH
 fi
@@ -721,12 +702,11 @@ if is_service_enabled m-svc; then
     # melange
     git_clone $MELANGE_REPO $MELANGE_DIR $MELANGE_BRANCH
 fi
+
 if is_service_enabled melange; then
     git_clone $MELANGECLIENT_REPO $MELANGECLIENT_DIR $MELANGECLIENT_BRANCH
 fi
-if is_service_enabled ryu; then
-    git_clone $RYU_REPO $RYU_DIR $RYU_BRANCH
-fi
+
 
 # Initialization
 # ==============
@@ -741,6 +721,7 @@ if is_service_enabled key g-api n-api swift; then
 fi
 if is_service_enabled swift; then
     cd $SWIFT_DIR; sudo python setup.py develop
+    cd $SWIFT3_DIR; sudo python setup.py develop
 fi
 if is_service_enabled g-api n-api; then
     cd $GLANCE_DIR; sudo python setup.py develop
@@ -752,7 +733,7 @@ fi
 if is_service_enabled quantum; then
     cd $QUANTUM_CLIENT_DIR; sudo python setup.py develop
 fi
-if is_service_enabled q-svc || is_service_enabled q-agt; then
+if is_service_enabled quantum; then
     cd $QUANTUM_DIR; sudo python setup.py develop
 fi
 if is_service_enabled m-svc; then
@@ -760,9 +741,6 @@ if is_service_enabled m-svc; then
 fi
 if is_service_enabled melange; then
     cd $MELANGECLIENT_DIR; sudo python setup.py develop
-fi
-if is_service_enabled ryu; then
-    cd $RYU_DIR; sudo python setup.py develop
 fi
 
 # Do this _after_ glance is installed to override the old binary
@@ -938,6 +916,7 @@ screen -r stack -X hardstatus alwayslastline "$SCREEN_HARDSTATUS"
 # Setup the django horizon application to serve via apache/wsgi
 
 if is_service_enabled horizon; then
+
     # Remove stale session database.
     rm -f $HORIZON_DIR/openstack_dashboard/local/dashboard_openstack.sqlite3
 
@@ -1027,6 +1006,7 @@ if is_service_enabled g-reg; then
     cp $GLANCE_DIR/etc/glance-api.conf $GLANCE_API_CONF
     iniset $GLANCE_API_CONF DEFAULT debug True
     inicomment $GLANCE_API_CONF DEFAULT log_file
+    iniset $GLANCE_API_CONF DEFAULT sql_connection $BASE_SQL_CONN/glance?charset=utf8
     iniset $GLANCE_API_CONF DEFAULT use_syslog $SYSLOG
     iniset $GLANCE_API_CONF DEFAULT filesystem_store_datadir $GLANCE_IMAGE_DIR/
     iniset $GLANCE_API_CONF paste_deploy flavor keystone
@@ -1054,116 +1034,83 @@ if is_service_enabled g-reg; then
     cp $GLANCE_DIR/etc/policy.json $GLANCE_POLICY_JSON
 fi
 
-# Quantum
+# Quantum (for controller or agent nodes)
 # -------
-
-# Helper functions.
-function install_ovs() {
-    # Install deps
-    # FIXME add to files/apts/quantum, but don't install if not needed!
-    if [[ "$os_PACKAGE" = "deb" ]]; then
-        kernel_version=`cat /proc/version | cut -d " " -f3`
-        install_package openvswitch-switch openvswitch-datapath-dkms linux-headers-$kernel_version
-    else
-        ### FIXME(dtroyer): Find RPMs for OpenVSwitch
-        echo "OpenVSwitch packages need to be located"
-    fi
-}
-
-function create_mysqldb() {
-    DATABASE_NAME=$1
-    # Create database for the plugin/agent
-    if is_service_enabled mysql; then
-        mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e\
-          'DROP DATABASE IF EXISTS '$DATABASE_NAME';'
-        mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e\
-          'CREATE DATABASE IF NOT EXISTS '$DATABASE_NAME' CHARACTER SET utf8;'
-    else
-        echo "mysql must be enabled in order to use the $Q_PLUGIN Quantum plugin."
-        exit 1
-    fi
-}
-
 if is_service_enabled quantum; then
     # Put config files in /etc/quantum for everyone to find
-    QUANTUM_CONF_DIR=/etc/quantum
-    if [[ ! -d $QUANTUM_CONF_DIR ]]; then
-        sudo mkdir -p $QUANTUM_CONF_DIR
+    if [[ ! -d /etc/quantum ]]; then
+        sudo mkdir -p /etc/quantum
     fi
-    sudo chown `whoami` $QUANTUM_CONF_DIR
-
-    # Set default values when using Linux Bridge plugin
-    if [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
-        # set the config file
-        QUANTUM_LB_CONF_DIR=$QUANTUM_CONF_DIR/plugins/linuxbridge
-        mkdir -p $QUANTUM_LB_CONF_DIR
-        QUANTUM_LB_CONFIG_FILE=$QUANTUM_LB_CONF_DIR/linuxbridge_conf.ini
-        # must remove this file from existing location, otherwise Quantum will prefer it
-        if [[ -e $QUANTUM_DIR/etc/quantum/plugins/linuxbridge/linuxbridge_conf.ini ]]; then
-            sudo mv $QUANTUM_DIR/etc/quantum/plugins/linuxbridge/linuxbridge_conf.ini $QUANTUM_LB_CONFIG_FILE
-        fi
-        #set the default network interface
-        QUANTUM_LB_PRIVATE_INTERFACE=${QUANTUM_LB_PRIVATE_INTERFACE:-$GUEST_INTERFACE_DEFAULT}
-    fi
-fi
-# Quantum service
-if is_service_enabled q-svc; then
-    QUANTUM_PLUGIN_INI_FILE=$QUANTUM_CONF_DIR/plugins.ini
-    # must remove this file from existing location, otherwise Quantum will prefer it
-    if [[ -e $QUANTUM_DIR/etc/plugins.ini ]]; then
-        sudo mv $QUANTUM_DIR/etc/plugins.ini $QUANTUM_PLUGIN_INI_FILE
-    fi
+    sudo chown `whoami` /etc/quantum
 
     if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
-        install_ovs
-        create_mysqldb ovs_quantum
-
-        QUANTUM_OVS_CONF_DIR=$QUANTUM_CONF_DIR/plugins/openvswitch
-        QUANTUM_OVS_CONFIG_FILE=$QUANTUM_OVS_CONF_DIR/ovs_quantum_plugin.ini
-        QUANTUM_PLUGIN_INI_FILE=$QUANTUM_CONF_DIR/plugins.ini
-
-        # must remove this file from existing location, otherwise Quantum will prefer it
-        if [[ -e $QUANTUM_DIR/etc/plugins.ini ]]; then
-            sudo mv $QUANTUM_DIR/etc/plugins.ini $QUANTUM_PLUGIN_INI_FILE
-        fi
-        # Make sure we're using the openvswitch plugin
-        sudo sed -i -e "s/^provider =.*$/provider = quantum.plugins.openvswitch.ovs_quantum_plugin.OVSQuantumPlugin/g" $QUANTUM_PLUGIN_INI_FILE
+        Q_PLUGIN_CONF_PATH=etc/quantum/plugins/openvswitch
+        Q_PLUGIN_CONF_FILENAME=ovs_quantum_plugin.ini
+        Q_DB_NAME="ovs_quantum"
+        Q_PLUGIN_CLASS="quantum.plugins.openvswitch.ovs_quantum_plugin.OVSQuantumPlugin"
     elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
         # Install deps
         # FIXME add to files/apts/quantum, but don't install if not needed!
         install_package python-configobj
-        # Create database for the plugin/agent
-        if is_service_enabled mysql; then
-            mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'DROP DATABASE IF EXISTS quantum_linux_bridge;'
-            mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'CREATE DATABASE IF NOT EXISTS quantum_linux_bridge;'
-            if grep -Fxq "user = " $QUANTUM_LB_CONFIG_FILE
-            then
-                sudo sed -i -e "s/^connection = sqlite$/#connection = sqlite/g" $QUANTUM_LB_CONFIG_FILE
-                sudo sed -i -e "s/^#connection = mysql$/connection = mysql/g" $QUANTUM_LB_CONFIG_FILE
-                sudo sed -i -e "s/^user = .*$/user = $MYSQL_USER/g" $QUANTUM_LB_CONFIG_FILE
-                sudo sed -i -e "s/^pass = .*$/pass = $MYSQL_PASSWORD/g" $QUANTUM_LB_CONFIG_FILE
-                sudo sed -i -e "s/^host = .*$/host = $MYSQL_HOST/g" $QUANTUM_LB_CONFIG_FILE
-            else
-                sudo sed -i -e "s/^sql_connection =.*$/sql_connection = mysql:\/\/$MYSQL_USER:$MYSQL_PASSWORD@$MYSQL_HOST\/quantum_linux_bridge?charset=utf8/g" $QUANTUM_LB_CONFIG_FILE
-            fi
+        Q_PLUGIN_CONF_PATH=etc/quantum/plugins/linuxbridge
+        Q_PLUGIN_CONF_FILENAME=linuxbridge_conf.ini
+        Q_DB_NAME="quantum_linux_bridge"
+        Q_PLUGIN_CLASS="quantum.plugins.linuxbridge.LinuxBridgePlugin.LinuxBridgePlugin"
+    elif [[ "$Q_PLUGIN" = "ryu" ]]; then
+        # Install deps
+        # FIXME add to files/apts/quantum, but don't install if not needed!
+        Q_PLUGIN_CONF_PATH=etc/quantum/plugins/ryu
+        Q_PLUGIN_CONF_FILENAME=ryu.ini
+        Q_DB_NAME="ovs_quantum"
+        Q_PLUGIN_CLASS="quantum.plugins.ryu.ryu_quantum_plugin.RyuQuantumPlugin"
+    else
+        echo "Unknown Quantum plugin '$Q_PLUGIN'.. exiting"
+        exit 1
+    fi
+
+    # if needed, move config file from $QUANTUM_DIR/etc/quantum to /etc/quantum
+    mkdir -p /$Q_PLUGIN_CONF_PATH
+    Q_PLUGIN_CONF_FILE=$Q_PLUGIN_CONF_PATH/$Q_PLUGIN_CONF_FILENAME
+    if [[ -e $QUANTUM_DIR/$Q_PLUGIN_CONF_FILE ]]; then
+            sudo mv $QUANTUM_DIR/$Q_PLUGIN_CONF_FILE /$Q_PLUGIN_CONF_FILE
+    fi
+    sudo sed -i -e "s/^sql_connection =.*$/sql_connection = mysql:\/\/$MYSQL_USER:$MYSQL_PASSWORD@$MYSQL_HOST\/$Q_DB_NAME?charset=utf8/g" /$Q_PLUGIN_CONF_FILE
+
+    OVS_ENABLE_TUNNELING=${OVS_ENABLE_TUNNELING:-True}
+    if [[ "$Q_PLUGIN" = "openvswitch" && $OVS_ENABLE_TUNNELING = "True" ]]; then
+        OVS_VERSION=`ovs-vsctl --version | head -n 1 | awk '{print $4;}'`
+        if [ $OVS_VERSION \< "1.4" ] && ! is_service_enabled q-svc ; then
+            echo "You are running OVS version $OVS_VERSION."
+            echo "OVS 1.4+ is required for tunneling between multiple hosts."
+            exit 1
+        fi
+        sudo sed -i -e "s/.*enable-tunneling = .*$/enable-tunneling = $OVS_ENABLE_TUNNELING/g" /$Q_PLUGIN_CONF_FILE
+    fi
+fi
+
+# Quantum service (for controller node)
+if is_service_enabled q-svc; then
+    Q_PLUGIN_INI_FILE=/etc/quantum/plugins.ini
+    Q_CONF_FILE=/etc/quantum/quantum.conf
+    # must remove this file from existing location, otherwise Quantum will prefer it
+    if [[ -e $QUANTUM_DIR/etc/plugins.ini ]]; then
+        sudo mv $QUANTUM_DIR/etc/plugins.ini $Q_PLUGIN_INI_FILE
+    fi
+
+    if [[ -e $QUANTUM_DIR/etc/quantum.conf ]]; then
+      sudo mv $QUANTUM_DIR/etc/quantum.conf $Q_CONF_FILE
+    fi
+
+    if is_service_enabled mysql; then
+            mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "DROP DATABASE IF EXISTS $Q_DB_NAME;"
+            mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "CREATE DATABASE IF NOT EXISTS $Q_DB_NAME CHARACTER SET utf8;"
         else
             echo "mysql must be enabled in order to use the $Q_PLUGIN Quantum plugin."
             exit 1
-        fi
-        # Make sure we're using the linuxbridge plugin
-        sudo sed -i -e "s/^provider =.*$/provider = quantum.plugins.linuxbridge.LinuxBridgePlugin.LinuxBridgePlugin/g" $QUANTUM_PLUGIN_INI_FILE
-    elif [[ "$Q_PLUGIN" = "ryu" ]]; then
-        install_ovs
-        create_mysqldb ovs_quantum
+    fi
+    sudo sed -i -e "s/^provider =.*$/provider = $Q_PLUGIN_CLASS/g" $Q_PLUGIN_INI_FILE
 
-        QUANTUM_PLUGIN_INI_FILE=$QUANTUM_CONF_DIR/plugins.ini
-        # must remove this file from existing location, otherwise Quantum will prefer it
-        if [[ -e $QUANTUM_DIR/etc/plugins.ini ]]; then
-            sudo mv $QUANTUM_DIR/etc/plugins.ini $QUANTUM_PLUGIN_INI_FILE
-        fi
-        # Make sure we're using the ryu plugin
-        sed -i -e "s/^provider =.*$/provider = quantum.plugins.ryu.ryu_quantum_plugin.RyuQuantumPlugin/g" $QUANTUM_PLUGIN_INI_FILE
-
+    if [[ "Q_PLUGIN" == "ryu" ]]; then
         # launch ryu manager
         RYU_CONF_DIR=/etc/ryu
         if [[ ! -d $RYU_CONF_DIR ]]; then
@@ -1179,137 +1126,76 @@ if is_service_enabled q-svc; then
 --ofp_listen_host=$RYU_OFP_HOST
 --ofp_tcp_listen_port=$RYU_OFP_PORT
 EOF
-
-        # TODO(soheil): Maybe a create_directory helper?
-        QUANTUM_RYU_CONF_DIR=$QUANTUM_CONF_DIR/plugins/ryu/
-        if [[ ! -d $QUANTUM_RYU_CONF_DIR ]]; then
-            sudo mkdir -p $QUANTUM_RYU_CONF_DIR
-        fi
-        sudo chown `whoami` $QUANTUM_RYU_CONF_DIR
-
-        # Start up the quantum <-> ryu agent
-        QUANTUM_RYU_CONFIG_FILE=$QUANTUM_RYU_CONF_DIR/ryu.ini
-        if [[ -e $QUANTUM_DIR/etc/quantum/plugins/ryu/ryu.ini ]]; then
-            sudo rm -f $QUANTUM_DIR/etc/quantum/plugins/ryu/ryu.ini
-        fi
-        cat <<EOF > $QUANTUM_RYU_CONFIG_FILE
-[DATABASE]
-sql_connection = mysql://$MYSQL_USER:$MYSQL_PASSWORD@$MYSQL_HOST/ovs_quantum
-[OVS]
-integration-bridge = $OVS_BRIDGE
-
-openflow-controller = $RYU_OFP_HOST:$RYU_OFP_PORT
-openflow-rest-api = $RYU_API_HOST:$RYU_API_PORT
-
-[AGENT]
-root_helper = sudo
-EOF
-
         screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF"
     fi
-    if [[ -e $QUANTUM_DIR/etc/quantum.conf ]]; then
-        sudo mv $QUANTUM_DIR/etc/quantum.conf $QUANTUM_CONF_DIR/quantum.conf
-    fi
-    screen_it q-svc "sleep 10; cd $QUANTUM_DIR && PYTHONPATH=.:$QUANTUM_CLIENT_DIR:$PYTHONPATH python $QUANTUM_DIR/bin/quantum-server $QUANTUM_CONF_DIR/quantum.conf"
+
+    screen_it q-svc "sleep 10; cd $QUANTUM_DIR && python $QUANTUM_DIR/bin/quantum-server $Q_CONF_FILE"
 fi
 
 # Quantum agent (for compute nodes)
 if is_service_enabled q-agt; then
-    QUANTUM_CONF_DIR=/etc/quantum
-    if [[ ! -d $QUANTUM_CONF_DIR ]]; then
-      sudo mkdir -p $QUANTUM_CONF_DIR
-    fi
-    sudo chown `whoami` $QUANTUM_CONF_DIR
-
     if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
-        install_ovs
-
+        # Install deps
+        # FIXME add to files/apts/quantum, but don't install if not needed!
+        if [[ "$os_PACKAGE" = "deb" ]]; then
+            kernel_version=`cat /proc/version | cut -d " " -f3`
+            install_package make fakeroot dkms openvswitch-switch openvswitch-datapath-dkms linux-headers-$kernel_version
+        else
+            ### FIXME(dtroyer): Find RPMs for OpenVSwitch
+            echo "OpenVSwitch packages need to be located"
+        fi
         # Set up integration bridge
         OVS_BRIDGE=${OVS_BRIDGE:-br-int}
+        for PORT in `sudo ovs-vsctl --no-wait list-ports $OVS_BRIDGE`; do
+            if [[ "$PORT" =~ tap* ]]; then echo `sudo ip link delete $PORT` > /dev/null; fi
+            sudo ovs-vsctl --no-wait del-port $OVS_BRIDGE $PORT
+        done
         sudo ovs-vsctl --no-wait -- --if-exists del-br $OVS_BRIDGE
         sudo ovs-vsctl --no-wait add-br $OVS_BRIDGE
         sudo ovs-vsctl --no-wait br-set-external-id $OVS_BRIDGE bridge-id br-int
         sudo ovs-vsctl --no-wait add-port $OVS_BRIDGE $Q_INTERFACE
         sudo ifconfig $Q_INTERFACE up
-        sudo ifconfig $OVS_BRIDGE up
 
-        QUANTUM_OVS_CONF_DIR=$QUANTUM_CONF_DIR/plugins/openvswitch
-        if [[ ! -d $QUANTUM_OVS_CONF_DIR ]]; then
-            sudo mkdir -p $QUANTUM_OVS_CONF_DIR
-        fi
-        sudo chown `whoami` $QUANTUM_OVS_CONF_DIR
-
-        # Start up the quantum <-> openvswitch agent
-        QUANTUM_OVS_CONFIG_FILE=$QUANTUM_OVS_CONF_DIR/ovs_quantum_plugin.ini
-        if [[ -e $QUANTUM_DIR/etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini ]]; then
-            sudo mv $QUANTUM_DIR/etc/quantum/plugins/openvswitch/ovs_quantum_plugin.ini $QUANTUM_OVS_CONFIG_FILE
-        fi
-        sudo sed -i -e "s/^sql_connection =.*$/sql_connection = mysql:\/\/$MYSQL_USER:$MYSQL_PASSWORD@$MYSQL_HOST\/ovs_quantum?charset=utf8/g" $QUANTUM_OVS_CONFIG_FILE
-       if [[ "$Q_TUNNEL_ENABLE" = "1" ]]; then
-           sudo sed -i -e "s/^enable-tunneling =.*$/enable-tunneling = True/g"\
-	       $QUANTUM_OVS_CONFIG_FILE
-           sudo sed -i -e "s|^.*remote-ip-file =.*$|remote-ip-file = $Q_TUNNEL_REMOTE_IP_FILE|g"\
-               $QUANTUM_OVS_CONFIG_FILE
-           sudo sed -i -e "s|^.*tunnel-bridge =.*$|tunnel-bridge = $Q_TUNNEL_TUN_BRIDGE|g"\
-               $QUANTUM_OVS_CONFIG_FILE
-           sudo sed -i -e "s|^.*integration-bridge =.*$|integration-bridge = $Q_TUNNEL_INT_BRIDGE|g"\
-               $QUANTUM_OVS_CONFIG_FILE
-           sudo sed -i -e "s/^.*local-ip =.*$/local-ip = $HOST_IP/g" $QUANTUM_OVS_CONFIG_FILE
-       fi
-
-        screen_it q-agt "sleep 4; sudo python $QUANTUM_DIR/quantum/plugins/openvswitch/agent/ovs_quantum_agent.py $QUANTUM_OVS_CONFIG_FILE -v"
+        sudo sed -i -e "s/.*local-ip = .*/local-ip = $HOST_IP/g" /$Q_PLUGIN_CONF_FILE
+        AGENT_BINARY=$QUANTUM_DIR/quantum/plugins/openvswitch/agent/ovs_quantum_agent.py
     elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
        # Start up the quantum <-> linuxbridge agent
        install_package bridge-utils
-       sudo sed -i -e "s/^physical_interface = .*$/physical_interface = $QUANTUM_LB_PRIVATE_INTERFACE/g" $QUANTUM_LB_CONFIG_FILE
-       if grep -Fxq "user = " $QUANTUM_LB_CONFIG_FILE
-       then
-           sudo sed -i -e "s/^connection = sqlite$/#connection = sqlite/g" $QUANTUM_LB_CONFIG_FILE
-           sudo sed -i -e "s/^#connection = mysql$/connection = mysql/g" $QUANTUM_LB_CONFIG_FILE
-           sudo sed -i -e "s/^user = .*$/user = $MYSQL_USER/g" $QUANTUM_LB_CONFIG_FILE
-           sudo sed -i -e "s/^pass = .*$/pass = $MYSQL_PASSWORD/g" $QUANTUM_LB_CONFIG_FILE
-           sudo sed -i -e "s/^host = .*$/host = $MYSQL_HOST/g" $QUANTUM_LB_CONFIG_FILE
-       else
-           sudo sed -i -e "s/^sql_connection =.*$/sql_connection = mysql:\/\/$MYSQL_USER:$MYSQL_PASSWORD@$MYSQL_HOST\/quantum_linux_bridge?charset=utf8/g" $QUANTUM_LB_CONFIG_FILE
-       fi
-
-       screen_it q-agt "sleep 4; sudo python $QUANTUM_DIR/quantum/plugins/linuxbridge/agent/linuxbridge_quantum_agent.py $QUANTUM_LB_CONFIG_FILE -v"
+        #set the default network interface
+       QUANTUM_LB_PRIVATE_INTERFACE=${QUANTUM_LB_PRIVATE_INTERFACE:-$GUEST_INTERFACE_DEFAULT}
+       sudo sed -i -e "s/^physical_interface = .*$/physical_interface = $QUANTUM_LB_PRIVATE_INTERFACE/g" /$Q_PLUGIN_CONF_FILE
+       AGENT_BINARY=$QUANTUM_DIR/quantum/plugins/linuxbridge/agent/linuxbridge_quantum_agent.py
     elif [[ "$Q_PLUGIN" = "ryu" ]]; then
-        install_ovs
-
+        # Install deps
+        # FIXME add to files/apts/quantum, but don't install if not needed!
+        if [[ "$os_PACKAGE" = "deb" ]]; then
+            kernel_version=`cat /proc/version | cut -d " " -f3`
+            install_package make fakeroot dkms openvswitch-switch openvswitch-datapath-dkms linux-headers-$kernel_version
+        else
+            ### FIXME(dtroyer): Find RPMs for OpenVSwitch
+            echo "OpenVSwitch packages need to be located"
+        fi
         # Set up integration bridge
         OVS_BRIDGE=${OVS_BRIDGE:-br-int}
+        for PORT in `sudo ovs-vsctl --no-wait list-ports $OVS_BRIDGE`; do
+            if [[ "$PORT" =~ tap* ]]; then echo `sudo ip link delete $PORT` > /dev/null; fi
+            sudo ovs-vsctl --no-wait del-port $OVS_BRIDGE $PORT
+        done
         sudo ovs-vsctl --no-wait -- --if-exists del-br $OVS_BRIDGE
         sudo ovs-vsctl --no-wait add-br $OVS_BRIDGE
         sudo ovs-vsctl --no-wait br-set-external-id $OVS_BRIDGE bridge-id br-int
         sudo ovs-vsctl --no-wait add-port $OVS_BRIDGE $Q_INTERFACE
         sudo ifconfig $Q_INTERFACE up
-        sudo ifconfig $OVS_BRIDGE up
 
-        # TODO(soheil): Maybe a create_directory helper?
-        QUANTUM_RYU_CONF_DIR=$QUANTUM_CONF_DIR/plugins/ryu/
-        if [[ ! -d $QUANTUM_RYU_CONF_DIR ]]; then
-            sudo mkdir -p $QUANTUM_RYU_CONF_DIR
-        fi
-        sudo chown `whoami` $QUANTUM_RYU_CONF_DIR
+        sudo sed -i -e "s/.*local-ip = .*/local-ip = $HOST_IP/g" /$Q_PLUGIN_CONF_FILE
+        sudo sed -i -e "s/.*integration-bridge = .*/integration-bridge = $OVS_BRIDGE/g" /Q_PLUGIN_CONF_FILE
+        sudo sed -i -e "s/.*openflow-controller = .*/openflow-controller = $RYU_OFP_HOST:$RYU_OFP_PORT/g" /Q_PLUGIN_CONF_FILE
+        sudo sed -i -e "s/.*openflow-rest-api = .*/openflow-rest-api = $RYU_API_HOST:$RYU_API_PORT/g" /Q_PLUGIN_CONF_FILE
 
-       # Start up the quantum <-> ryu agent
-        QUANTUM_RYU_CONFIG_FILE=$QUANTUM_RYU_CONF_DIR/ryu.ini
-        cat <<EOF > $QUANTUM_RYU_CONFIG_FILE
-[DATABASE]
-sql_connection = mysql://$MYSQL_USER:$MYSQL_PASSWORD@$MYSQL_HOST/ovs_quantum
-[OVS]
-integration-bridge = $OVS_BRIDGE
-
-openflow-controller = $RYU_OFP_HOST:$RYU_OFP_PORT
-openflow-rest-api = $RYU_API_HOST:$RYU_API_PORT
-
-[AGENT]
-root_helper = sudo
-EOF
-
-        screen_it q-agt "sleep 20; sudo python $QUANTUM_DIR/quantum/plugins/ryu/agent/ryu_quantum_agent.py $QUANTUM_RYU_CONFIG_FILE -v"
+        AGENT_BINARY=$QUANTUM_DIR/quantum/plugins/ryu/agent/ryu_quantum_agent.py
     fi
+    # Start up the quantum agent
+    screen_it q-agt "sleep 20; sudo python $AGENT_BINARY /$Q_PLUGIN_CONF_FILE -v"
 fi
 
 # Melange service
@@ -1415,20 +1301,6 @@ if is_service_enabled n-cpu; then
         fi
     fi
 
-    if [[ "$LIBVIRT_TYPE" == "qemu" ]]; then
-        sudo bash -c 'cat <<EOF >>/etc/libvirt/qemu.conf
-user = "root"
-group = "root"
-cgroup_device_acl = [
-  "/dev/null", "/dev/full", "/dev/zero",
-  "/dev/random", "/dev/urandom",
-  "/dev/ptmx", "/dev/kvm", "/dev/kqemu",
-  "/dev/rtc", "/dev/hpet", "/dev/net/tun",
-]
-EOF'
-      restart_service libvirt-bin
-    fi
-
     # Install and configure **LXC** if specified.  LXC is another approach to
     # splitting a system into many smaller parts.  LXC uses cgroups and chroot
     # to simulate multiple systems.
@@ -1451,6 +1323,21 @@ EOF'
             echo "RPM-based cgroup not implemented yet"
             yum_install libcgroup-tools
         fi
+    fi
+
+    QEMU_CONF=/etc/libvirt/qemu.conf
+    if is_service_enabled quantum && [[ $Q_PLUGIN = "openvswitch" || $Q_PLUGIN = "ryu" ]] && ! sudo grep -q '^cgroup_device_acl' $QEMU_CONF ; then
+        # add /dev/net/tun to cgroup_device_acls, needed for type=ethernet interfaces
+        sudo chmod 666 $QEMU_CONF
+        sudo cat <<EOF >> /etc/libvirt/qemu.conf
+cgroup_device_acl = [
+    "/dev/null", "/dev/full", "/dev/zero",
+    "/dev/random", "/dev/urandom",
+    "/dev/ptmx", "/dev/kvm", "/dev/kqemu",
+    "/dev/rtc", "/dev/hpet","/dev/net/tun",
+]
+EOF
+        sudo chmod 644 $QEMU_CONF
     fi
 
     if [[ "$os_PACKAGE" = "deb" ]]; then
@@ -1537,16 +1424,20 @@ if is_service_enabled swift; then
     sudo chown -R $USER:${USER_GROUP} ${SWIFT_DATA_DIR}
 
     # We then create a loopback disk and format it to XFS.
-    # TODO: Reset disks on new pass.
-    if [[ ! -e ${SWIFT_DATA_DIR}/drives/images/swift.img ]]; then
+    if [[ -e ${SWIFT_DATA_DIR}/drives/images/swift.img ]]; then
+        if egrep -q ${SWIFT_DATA_DIR}/drives/sdb1 /proc/mounts; then
+            sudo umount ${SWIFT_DATA_DIR}/drives/sdb1
+        fi
+    else
         mkdir -p  ${SWIFT_DATA_DIR}/drives/images
         sudo touch  ${SWIFT_DATA_DIR}/drives/images/swift.img
         sudo chown $USER: ${SWIFT_DATA_DIR}/drives/images/swift.img
 
         dd if=/dev/zero of=${SWIFT_DATA_DIR}/drives/images/swift.img \
             bs=1024 count=0 seek=${SWIFT_LOOPBACK_DISK_SIZE}
-        mkfs.xfs -f -i size=1024  ${SWIFT_DATA_DIR}/drives/images/swift.img
     fi
+    # Make a fresh XFS filesystem
+    mkfs.xfs -f -i size=1024  ${SWIFT_DATA_DIR}/drives/images/swift.img
 
     # After the drive being created we mount the disk with a few mount
     # options to make it most efficient as possible for swift.
@@ -1616,8 +1507,6 @@ if is_service_enabled swift; then
        s,%SERVICE_PASSWORD%,$SERVICE_PASSWORD,g;
        s,%KEYSTONE_SERVICE_PROTOCOL%,$KEYSTONE_SERVICE_PROTOCOL,g;
        s,%SERVICE_TOKEN%,${SERVICE_TOKEN},g;
-       s,%KEYSTONE_SERVICE_PORT%,${KEYSTONE_SERVICE_PORT},g;
-       s,%KEYSTONE_SERVICE_HOST%,${KEYSTONE_SERVICE_HOST},g;
        s,%KEYSTONE_API_PORT%,${KEYSTONE_API_PORT},g;
        s,%KEYSTONE_AUTH_HOST%,${KEYSTONE_AUTH_HOST},g;
        s,%KEYSTONE_AUTH_PORT%,${KEYSTONE_AUTH_PORT},g;
@@ -1791,41 +1680,24 @@ if is_service_enabled quantum; then
         add_nova_opt "melange_host=$M_HOST"
         add_nova_opt "melange_port=$M_PORT"
     fi
-    if is_service_enabled q-svc && [[ "$Q_PLUGIN" = "openvswitch" ]]; then
-        add_nova_opt "libvirt_vif_type=ethernet"
-        add_nova_opt "libvirt_vif_driver=nova.virt.libvirt.vif.LibvirtOpenVswitchDriver"
-        add_nova_opt "linuxnet_interface_driver=nova.network.linux_net.LinuxOVSInterfaceDriver"
-        add_nova_opt "quantum_use_dhcp=True"
-    elif is_service_enabled q-svc && [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
-        add_nova_opt "libvirt_vif_type=ethernet"
-        add_nova_opt "libvirt_vif_driver=nova.virt.libvirt.vif.QuantumLinuxBridgeVIFDriver"
-        add_nova_opt "linuxnet_interface_driver=nova.network.linux_net.QuantumLinuxBridgeInterfaceDriver"
-        add_nova_opt "quantum_use_dhcp=True"
-    fi
-    if is_service_enabled q-svc && [[ "$Q_PLUGIN" = "ryu" ]]; then
-        add_nova_opt "libvirt_vif_type=ethernet"
-        add_nova_opt "libvirt_vif_driver=quantum.plugins.ryu.nova.vif.LibvirtOpenVswitchOFPRyuDriver"
-        add_nova_opt "linuxnet_interface_driver=quantum.plugins.ryu.nova.linux_net.LinuxOVSRyuInterfaceDriver"
+
+    if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
+        NOVA_VIF_DRIVER="nova.virt.libvirt.vif.LibvirtOpenVswitchDriver"
+        LINUXNET_VIF_DRIVER="nova.network.linux_net.LinuxOVSInterfaceDriver"
+    elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
+        NOVA_VIF_DRIVER="nova.virt.libvirt.vif.QuantumLinuxBridgeVIFDriver"
+        LINUXNET_VIF_DRIVER="nova.network.linux_net.QuantumLinuxBridgeInterfaceDriver"
+    elif [[ "$Q_PLUGIN" = "ryu" ]]; then
+        NOVA_VIF_DRIVER="quantum.plugins.ryu.nova.vif.LibvirtOpenVswitchOFPRyuDriver"
+        LINUXNET_VIF_DRIVER="quantum.plugins.ryu.nova.linux_net.LinuxOVSRyuInterfaceDriver"
         add_nova_opt "libvirt_ovs_ryu_api_host=$RYU_API_HOST:$RYU_API_PORT"
         add_nova_opt "linuxnet_ovs_ryu_api_host=$RYU_API_HOST:$RYU_API_PORT"
         add_nova_opt "libvirt_ovs_integration_bridge=$OVS_BRIDGE"
-        add_nova_opt "quantum_use_dhcp=True"
     fi
-    if is_service_enabled q-agt && [[ "$Q_PLUGIN" = "openvswitch" ]]; then
-        add_nova_opt "libvirt_vif_type=ethernet"
-        add_nova_opt "libvirt_vif_driver=nova.virt.libvirt.vif.LibvirtOpenVswitchDriver"
-        add_nova_opt "linuxnet_interface_driver=nova.network.linux_net.LinuxOVSInterfaceDriver"
-        add_nova_opt "quantum_use_dhcp=True"
-    fi
-    if is_service_enabled q-agt && [[ "$Q_PLUGIN" = "ryu" ]]; then
-        add_nova_opt "libvirt_vif_type=ethernet"
-        add_nova_opt "libvirt_vif_driver=quantum.plugins.ryu.nova.vif.LibvirtOpenVswitchOFPRyuDriver"
-        add_nova_opt "linuxnet_interface_driver=quantum.plugins.ryu.nova.linux_net.LinuxOVSRyuInterfaceDriver"
-        add_nova_opt "libvirt_ovs_ryu_api_host=$RYU_API_HOST:$RYU_API_PORT"
-        add_nova_opt "linuxnet_ovs_ryu_api_host=$RYU_API_HOST:$RYU_API_PORT"
-        add_nova_opt "libvirt_ovs_integration_bridge=$OVS_BRIDGE"
-        add_nova_opt "quantum_use_dhcp=True"
-    fi
+    add_nova_opt "libvirt_vif_type=ethernet"
+    add_nova_opt "libvirt_vif_driver=$NOVA_VIF_DRIVER"
+    add_nova_opt "linuxnet_interface_driver=$LINUXNET_VIF_DRIVER"
+    add_nova_opt "quantum_use_dhcp=True"
 else
     add_nova_opt "network_manager=nova.network.manager.$NET_MAN"
 fi
@@ -1867,11 +1739,11 @@ add_nova_opt "vncserver_proxyclient_address=$VNCSERVER_PROXYCLIENT_ADDRESS"
 add_nova_opt "api_paste_config=$NOVA_CONF_DIR/api-paste.ini"
 add_nova_opt "image_service=nova.image.glance.GlanceImageService"
 add_nova_opt "ec2_dmz_host=$EC2_DMZ_HOST"
-if is_service_enabled rabbit ; then
+if is_service_enabled qpid ; then
+    add_nova_opt "rpc_backend=nova.rpc.impl_qpid"
+elif [ -n "$RABBIT_HOST" ] &&  [ -n "$RABBIT_PASSWORD" ]; then
     add_nova_opt "rabbit_host=$RABBIT_HOST"
     add_nova_opt "rabbit_password=$RABBIT_PASSWORD"
-elif is_service_enabled qpid ; then
-    add_nova_opt "rpc_backend=nova.rpc.impl_qpid"
 fi
 add_nova_opt "glance_api_servers=$GLANCE_HOSTPORT"
 add_nova_opt "force_dhcp_release=True"
@@ -1899,7 +1771,7 @@ fi
 # For Example: EXTRA_OPTS=(foo=true bar=2)
 for I in "${EXTRA_OPTS[@]}"; do
     # Attempt to convert flags to options
-    add_nova_opt ${I//-}
+    add_nova_opt ${I//--}
 done
 
 
@@ -1910,8 +1782,9 @@ if [ "$VIRT_DRIVER" = 'xenserver' ]; then
     read_password XENAPI_PASSWORD "ENTER A PASSWORD TO USE FOR XEN."
     add_nova_opt "connection_type=xenapi"
     XENAPI_CONNECTION_URL=${XENAPI_CONNECTION_URL:-"http://169.254.0.1"}
+    XENAPI_USER=${XENAPI_USER:-"root"}
     add_nova_opt "xenapi_connection_url=$XENAPI_CONNECTION_URL"
-    add_nova_opt "xenapi_connection_username=root"
+    add_nova_opt "xenapi_connection_username=$XENAPI_USER"
     add_nova_opt "xenapi_connection_password=$XENAPI_PASSWORD"
     add_nova_opt "flat_injected=False"
     # Need to avoid crash due to new firewall support
@@ -1938,6 +1811,7 @@ if is_service_enabled mysql && is_service_enabled nova; then
     # (re)create nova database
     $NOVA_DIR/bin/nova-manage db sync
 fi
+
 
 # Launch Services
 # ===============
