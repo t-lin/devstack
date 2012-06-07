@@ -6,8 +6,7 @@ added.
 I will try to keep it in sync with the upstream. If you had any problems, please
 file a bug.
 
-This verison is only tested on Ubuntu 12.04 Beta 2. Use other versions at your
-risk.
+This verison is only tested on Ubuntu 12.04. Use other versions at your risk.
 
 # How to install the controller node
 
@@ -45,6 +44,10 @@ Each node has two interfaces, which are connected as drawn in the figure. eth0's
 are used for the control channels, and eth1 is used for connecting VMs. HOST1
 will be our controller/network/compute node, and HOST2 will be solely a compute
 node.
+
+**NOTE**: It is strongly recommended to use static IPs on the physical
+interfaces. If you use DHCP on any desktop distribution (e.g., Ubuntu Desktop),
+make sure you uninstall the `network-manager` package.
 
 **NOTE**: If you want to test it on VirtualBox, use the virtual box template
 uploaded on [my home page](http://www.cs.toronto.edu/~soheil/devstack-vbox.tbz2)
