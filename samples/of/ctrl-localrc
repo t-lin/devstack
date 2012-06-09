@@ -23,6 +23,10 @@ Q_PLUGIN=${Q_PLUGIN}
 RYU_ENABLED_ENABLED_SERVICES=$ENABLED_SERVICES,ryu
 RYU_ENABLED_RYU_API_HOST=${RYU_HOST}
 RYU_ENABLED_RYU_OFP_HOST=${RYU_HOST}
+RYU_ENABLED_RYU_REPO=https://github.com/soheilhassasyeganeh/ryu.git
+RYU_ENABLED_RYU_BRANCH=devel/ryu-folsom
+RYU_ENABLED_QUANTUM_REPO=https://github.com/soheilhassasyeganeh/quantum.git
+RYU_ENABLED_QUANTUM_BRANCH=devel/fix-ryu
 
 SERVICE_TOKEN=qweasdzxc
 

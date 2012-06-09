@@ -219,6 +219,7 @@ QUANTUM_DIR=$DEST/quantum
 QUANTUM_CLIENT_DIR=$DEST/python-quantumclient
 MELANGE_DIR=$DEST/melange
 MELANGECLIENT_DIR=$DEST/python-melangeclient
+RYU_DIR=$DEST/ryu
 
 # Default Quantum Plugin
 Q_PLUGIN=${Q_PLUGIN:-openvswitch}
@@ -233,6 +234,15 @@ M_PORT=${M_PORT:-9898}
 M_HOST=${M_HOST:-localhost}
 # Melange MAC Address Range
 M_MAC_RANGE=${M_MAC_RANGE:-FE-EE-DD-00-00-00/24}
+
+# Ryu API Host
+RYU_API_HOST=${RYU_API_HOST:-127.0.0.1}
+# Ryu API Port
+RYU_API_PORT=${RYU_API_PORT:-8080}
+# Ryu OFP Host
+RYU_OFP_HOST=${RYU_OFP_HOST:-127.0.0.1}
+# Ryu OFP Port
+RYU_OFP_PORT=${RYU_OFP_PORT:-6633}
 
 # Name of the lvm volume group to use/create for iscsi volumes
 VOLUME_GROUP=${VOLUME_GROUP:-nova-volumes}
@@ -706,7 +716,9 @@ fi
 if is_service_enabled melange; then
     git_clone $MELANGECLIENT_REPO $MELANGECLIENT_DIR $MELANGECLIENT_BRANCH
 fi
-
+if is_service_enabled ryu; then
+    git_clone $RYU_REPO $RYU_DIR $RYU_BRANCH
+fi
 
 # Initialization
 # ==============
@@ -741,6 +753,9 @@ if is_service_enabled m-svc; then
 fi
 if is_service_enabled melange; then
     cd $MELANGECLIENT_DIR; sudo python setup.py develop
+fi
+if is_service_enabled ryu; then
+    cd $RYU_DIR; sudo python setup.py develop
 fi
 
 # Do this _after_ glance is installed to override the old binary
@@ -1110,7 +1125,7 @@ if is_service_enabled q-svc; then
     fi
     sudo sed -i -e "s/^provider =.*$/provider = $Q_PLUGIN_CLASS/g" $Q_PLUGIN_INI_FILE
 
-    if [[ "Q_PLUGIN" == "ryu" ]]; then
+    if [[ "$Q_PLUGIN" = "ryu" ]]; then
         # launch ryu manager
         RYU_CONF_DIR=/etc/ryu
         if [[ ! -d $RYU_CONF_DIR ]]; then
@@ -1129,7 +1144,7 @@ EOF
         screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF"
     fi
 
-    screen_it q-svc "sleep 10; cd $QUANTUM_DIR && python $QUANTUM_DIR/bin/quantum-server $Q_CONF_FILE"
+    screen_it q-svc "sleep 15; cd $QUANTUM_DIR && python $QUANTUM_DIR/bin/quantum-server $Q_CONF_FILE"
 fi
 
 # Quantum agent (for compute nodes)
@@ -1188,14 +1203,14 @@ if is_service_enabled q-agt; then
         sudo ifconfig $Q_INTERFACE up
 
         sudo sed -i -e "s/.*local-ip = .*/local-ip = $HOST_IP/g" /$Q_PLUGIN_CONF_FILE
-        sudo sed -i -e "s/.*integration-bridge = .*/integration-bridge = $OVS_BRIDGE/g" /Q_PLUGIN_CONF_FILE
-        sudo sed -i -e "s/.*openflow-controller = .*/openflow-controller = $RYU_OFP_HOST:$RYU_OFP_PORT/g" /Q_PLUGIN_CONF_FILE
-        sudo sed -i -e "s/.*openflow-rest-api = .*/openflow-rest-api = $RYU_API_HOST:$RYU_API_PORT/g" /Q_PLUGIN_CONF_FILE
+        sudo sed -i -e "s/.*integration-bridge = .*/integration-bridge = $OVS_BRIDGE/g" /$Q_PLUGIN_CONF_FILE
+        sudo sed -i -e "s/.*openflow-controller = .*/openflow-controller = $RYU_OFP_HOST:$RYU_OFP_PORT/g" /$Q_PLUGIN_CONF_FILE
+        sudo sed -i -e "s/.*openflow-rest-api = .*/openflow-rest-api = $RYU_API_HOST:$RYU_API_PORT/g" /$Q_PLUGIN_CONF_FILE
 
         AGENT_BINARY=$QUANTUM_DIR/quantum/plugins/ryu/agent/ryu_quantum_agent.py
     fi
     # Start up the quantum agent
-    screen_it q-agt "sleep 20; sudo python $AGENT_BINARY /$Q_PLUGIN_CONF_FILE -v"
+    screen_it q-agt "sleep 30; sudo python $AGENT_BINARY /$Q_PLUGIN_CONF_FILE -v"
 fi
 
 # Melange service
