@@ -9,6 +9,17 @@ RC_DIR=$(cd $(dirname "$BASH_SOURCE") && pwd)
 # ENABLED_SERVICES="$ENABLED_SERVICES,swift"
 ENABLED_SERVICES=g-api,g-reg,key,n-api,n-crt,n-obj,n-cpu,n-net,n-vol,n-sch,n-novnc,n-xvnc,n-cauth,horizon,mysql,rabbit
 
+# Set the default Nova APIs to enable
+NOVA_ENABLED_APIS=ec2,osapi_compute,osapi_volume,metadata
+
+# volume service
+CINDER_REPO=https://github.com/openstack/cinder
+CINDER_BRANCH=master
+
+# volume client
+CINDERCLIENT_REPO=https://github.com/openstack/python-cinderclient
+CINDERCLIENT_BRANCH=master
+
 # compute service
 NOVA_REPO=https://github.com/openstack/nova.git
 NOVA_BRANCH=master
@@ -19,6 +30,10 @@ SWIFT_BRANCH=master
 SWIFT3_REPO=https://github.com/fujita/swift3.git
 SWIFT3_BRANCH=master
 
+
+# python swift client library
+SWIFTCLIENT_REPO=https://github.com/openstack/python-swiftclient
+SWIFTCLIENT_BRANCH=master
 
 # image catalog service
 GLANCE_REPO=https://github.com/openstack/glance.git
@@ -93,8 +108,10 @@ RYU_BRANCH=master
 #IMAGE_URLS="http://launchpad.net/cirros/trunk/0.3.0/+download/cirros-0.3.0-x86_64-disk.img" # cirros full disk image
 case "$LIBVIRT_TYPE" in
     lxc) # the cirros root disk in the uec tarball is empty, so it will not work for lxc
+        DEFAULT_IMAGE_NAME=cirros-0.3.0-x86_64-rootfs
         IMAGE_URLS="http://launchpad.net/cirros/trunk/0.3.0/+download/cirros-0.3.0-x86_64-rootfs.img.gz";;
     *)  # otherwise, use the uec style image (with kernel, ramdisk, disk)
+        DEFAULT_IMAGE_NAME=cirros-0.3.0-x86_64-uec
         IMAGE_URLS="http://launchpad.net/cirros/trunk/0.3.0/+download/cirros-0.3.0-x86_64-uec.tar.gz";;
 esac
 

@@ -64,18 +64,23 @@ fi
 # repositories and branches to configure.  ``stackrc`` sources ``localrc`` to
 # allow you to safely override those settings without being overwritten
 # when updating DevStack.
+if [[ ! -r $TOP_DIR/stackrc ]]; then
+    echo "ERROR: missing $TOP_DIR/stackrc - did you grab more than just stack.sh?"
+    exit 1
+fi
+source $TOP_DIR/stackrc
 
 # HTTP and HTTPS proxy servers are supported via the usual environment variables
 # ``http_proxy`` and ``https_proxy``.  They can be set in ``localrc`` if necessary
 # or on the command line::
 #
 #     http_proxy=http://proxy.example.com:3128/ ./stack.sh
-
-if [[ ! -r $TOP_DIR/stackrc ]]; then
-    echo "ERROR: missing $TOP_DIR/stackrc - did you grab more than just stack.sh?"
-    exit 1
+if [[ -n "$http_proxy" ]]; then
+    export http_proxy=$http_proxy
 fi
-source $TOP_DIR/stackrc
+if [[ -n "$https_proxy" ]]; then
+    export https_proxy=$https_proxy
+fi
 
 # Destination path for installation ``DEST``
 DEST=${DEST:-/opt/stack}
@@ -107,6 +112,13 @@ else
     NOVA_ROOTWRAP=/usr/bin/nova-rootwrap
 fi
 
+# ``stack.sh`` keeps function libraries here
+# Make sure ``$TOP_DIR/lib`` directory is present
+if [ ! -d $TOP_DIR/lib ]; then
+    echo "ERROR: missing devstack/lib - did you grab more than just stack.sh?"
+    exit 1
+fi
+
 # stack.sh keeps the list of ``apt`` and ``pip`` dependencies in external
 # files, along with config templates and other useful files.  You can find these
 # in the ``files`` directory (next to this script).  We will reference this
@@ -122,6 +134,12 @@ if type -p screen >/dev/null && screen -ls | egrep -q "[0-9].stack"; then
     echo "You are already running a stack.sh session."
     echo "To rejoin this session type 'screen -x stack'."
     echo "To destroy this session, kill the running screen."
+    exit 1
+fi
+
+# Make sure we only have one volume service enabled.
+if is_service_enabled cinder && is_service_enabled n-vol; then
+    echo "ERROR: n-vol and cinder must not be enabled at the same time"
     exit 1
 fi
 
@@ -187,13 +205,6 @@ else
     sudo chown root:root $TEMPFILE
     sudo mv $TEMPFILE /etc/sudoers.d/50_stack_sh
 
-    # Set up the rootwrap sudoers
-    TEMPFILE=`mktemp`
-    echo "$USER ALL=(root) NOPASSWD: $NOVA_ROOTWRAP" >$TEMPFILE
-    chmod 0440 $TEMPFILE
-    sudo chown root:root $TEMPFILE
-    sudo mv $TEMPFILE /etc/sudoers.d/nova-rootwrap
-
     # Remove old file
     sudo rm -f /etc/sudoers.d/stack_sh_nova
 fi
@@ -202,6 +213,19 @@ fi
 # ``stack.sh`` must have been previously run with Internet access to install
 # prerequisites and initialize ``$DEST``.
 OFFLINE=`trueorfalse False $OFFLINE`
+
+# Destination path for service data
+DATA_DIR=${DATA_DIR:-${DEST}/data}
+sudo mkdir -p $DATA_DIR
+sudo chown `whoami` $DATA_DIR
+
+
+# Projects
+# --------
+
+# Get project function libraries
+source $TOP_DIR/lib/cinder
+
 
 # Set the destination directories for openstack projects
 NOVA_DIR=$DEST/nova
@@ -215,6 +239,7 @@ OPENSTACKCLIENT_DIR=$DEST/python-openstackclient
 NOVNC_DIR=$DEST/noVNC
 SWIFT_DIR=$DEST/swift
 SWIFT3_DIR=$DEST/swift3
+SWIFTCLIENT_DIR=$DEST/python-swiftclient
 QUANTUM_DIR=$DEST/quantum
 QUANTUM_CLIENT_DIR=$DEST/python-quantumclient
 MELANGE_DIR=$DEST/melange
@@ -245,7 +270,7 @@ RYU_OFP_HOST=${RYU_OFP_HOST:-127.0.0.1}
 RYU_OFP_PORT=${RYU_OFP_PORT:-6633}
 
 # Name of the lvm volume group to use/create for iscsi volumes
-VOLUME_GROUP=${VOLUME_GROUP:-nova-volumes}
+VOLUME_GROUP=${VOLUME_GROUP:-stack-volumes}
 VOLUME_NAME_PREFIX=${VOLUME_NAME_PREFIX:-volume-}
 INSTANCE_NAME_PREFIX=${INSTANCE_NAME_PREFIX:-instance-}
 
@@ -277,6 +302,9 @@ SERVICE_HOST=${SERVICE_HOST:-$HOST_IP}
 SYSLOG=`trueorfalse False $SYSLOG`
 SYSLOG_HOST=${SYSLOG_HOST:-$HOST_IP}
 SYSLOG_PORT=${SYSLOG_PORT:-516}
+
+# Use color for logging output
+LOG_COLOR=`trueorfalse True $LOG_COLOR`
 
 # Service startup timeout
 SERVICE_TIMEOUT=${SERVICE_TIMEOUT:-60}
@@ -615,6 +643,10 @@ function get_packages() {
             if [[ ! $file_to_parse =~ glance ]]; then
                 file_to_parse="${file_to_parse} glance"
             fi
+        elif [[ $service == c-* ]]; then
+            if [[ ! $file_to_parse =~ cinder ]]; then
+                file_to_parse="${file_to_parse} cinder"
+            fi
         elif [[ $service == n-* ]]; then
             if [[ ! $file_to_parse =~ nova ]]; then
                 file_to_parse="${file_to_parse} nova"
@@ -642,29 +674,19 @@ function get_packages() {
                 continue
             fi
 
-            if [[ $line =~ (.*)#.*dist:([^ ]*) ]]; then # We are using BASH regexp matching feature.
-                        package=${BASH_REMATCH[1]}
-                        distros=${BASH_REMATCH[2]}
-                        for distro in ${distros//,/ }; do  #In bash ${VAR,,} will lowecase VAR
-                            [[ ${distro,,} == ${DISTRO,,} ]] && echo $package
-                        done
-                        continue
+            if [[ $line =~ (.*)#.*dist:([^ ]*) ]]; then
+                # We are using BASH regexp matching feature.
+                package=${BASH_REMATCH[1]}
+                distros=${BASH_REMATCH[2]}
+                # In bash ${VAR,,} will lowecase VAR
+                [[ ${distros,,} =~ ${DISTRO,,} ]] && echo $package
+                continue
             fi
 
             echo ${line%#*}
         done
         IFS=$OIFS
     done
-}
-
-# pip install the dependencies of the package before we do the setup.py
-# develop, so that pip and not distutils process the dependency chain
-function setup_develop() {
-    python setup.py egg_info
-    raw_links=`cat *.egg-info/dependency_links.txt | awk '{print "-f " $1}'`
-    depend_links=`echo $raw_links | xargs`
-    sudo pip install -r *-info/requires.txt $depend_links
-    sudo python setup.py develop
 }
 
 # install package requirements
@@ -694,6 +716,9 @@ fi
 if is_service_enabled swift; then
     # storage service
     git_clone $SWIFT_REPO $SWIFT_DIR $SWIFT_BRANCH
+    # storage service client and and Library
+    git_clone $SWIFTCLIENT_REPO $SWIFTCLIENT_DIR $SWIFTCLIENT_BRANCH
+    # swift3 middleware to provide S3 emulation to Swift
     git_clone $SWIFT3_REPO $SWIFT3_DIR $SWIFT3_BRANCH
 fi
 if is_service_enabled g-api n-api; then
@@ -722,9 +747,11 @@ if is_service_enabled m-svc; then
     # melange
     git_clone $MELANGE_REPO $MELANGE_DIR $MELANGE_BRANCH
 fi
-
 if is_service_enabled melange; then
     git_clone $MELANGECLIENT_REPO $MELANGECLIENT_DIR $MELANGECLIENT_BRANCH
+fi
+if is_service_enabled cinder; then
+    install_cinder
 fi
 if is_service_enabled ryu; then
     git_clone $RYU_REPO $RYU_DIR $RYU_BRANCH
@@ -735,41 +762,43 @@ fi
 
 # setup our checkouts so they are installed into python path
 # allowing ``import nova`` or ``import glance.client``
-cd $KEYSTONECLIENT_DIR; setup_develop
-cd $NOVACLIENT_DIR; setup_develop
-cd $OPENSTACKCLIENT_DIR; setup_develop
+setup_develop $KEYSTONECLIENT_DIR
+setup_develop $NOVACLIENT_DIR
+setup_develop $OPENSTACKCLIENT_DIR
 if is_service_enabled key g-api n-api swift; then
-    cd $KEYSTONE_DIR; setup_develop
+    setup_develop $KEYSTONE_DIR
 fi
 if is_service_enabled swift; then
-    cd $SWIFT_DIR; setup_develop
-    cd $SWIFT3_DIR; setup_develop
+    setup_develop $SWIFT_DIR
+    setup_develop $SWIFTCLIENT_DIR
+    setup_develop $SWIFT3_DIR
 fi
 if is_service_enabled g-api n-api; then
-    cd $GLANCE_DIR; setup_develop
+    setup_develop $GLANCE_DIR
 fi
-cd $NOVA_DIR; setup_develop
+setup_develop $NOVA_DIR
 if is_service_enabled horizon; then
-    cd $HORIZON_DIR; setup_develop
+    setup_develop $HORIZON_DIR
 fi
 if is_service_enabled quantum; then
-    cd $QUANTUM_CLIENT_DIR; setup_develop
-fi
-if is_service_enabled quantum; then
-    cd $QUANTUM_DIR; setup_develop
+    setup_develop $QUANTUM_CLIENT_DIR
+    setup_develop $QUANTUM_DIR
 fi
 if is_service_enabled m-svc; then
-    cd $MELANGE_DIR; setup_develop
+    setup_develop $MELANGE_DIR
 fi
 if is_service_enabled melange; then
-    cd $MELANGECLIENT_DIR; setup_develop
+    setup_develop $MELANGECLIENT_DIR
+fi
+if is_service_enabled cinder; then
+    configure_cinder
 fi
 if is_service_enabled ryu; then
     cd $RYU_DIR; sudo python setup.py develop
 fi
 
 # Do this _after_ glance is installed to override the old binary
-cd $GLANCECLIENT_DIR; setup_develop
+setup_develop $GLANCECLIENT_DIR
 
 
 # Syslog
@@ -1057,6 +1086,9 @@ if is_service_enabled g-reg; then
 
     GLANCE_POLICY_JSON=$GLANCE_CONF_DIR/policy.json
     cp $GLANCE_DIR/etc/policy.json $GLANCE_POLICY_JSON
+
+    $GLANCE_DIR/bin/glance-manage db_sync
+
 fi
 
 # Quantum (for controller or agent nodes)
@@ -1115,15 +1147,21 @@ fi
 
 # Quantum service (for controller node)
 if is_service_enabled q-svc; then
-    Q_PLUGIN_INI_FILE=/etc/quantum/plugins.ini
-    Q_CONF_FILE=/etc/quantum/quantum.conf
     # must remove this file from existing location, otherwise Quantum will prefer it
     if [[ -e $QUANTUM_DIR/etc/plugins.ini ]]; then
+        # Support prior to common config
+        Q_PLUGIN_INI_FILE=/etc/quantum/plugins.ini
         sudo mv $QUANTUM_DIR/etc/plugins.ini $Q_PLUGIN_INI_FILE
     fi
+    Q_CONF_FILE=/etc/quantum/quantum.conf
+    Q_API_PASTE_FILE=/etc/quantum/api-paste.ini
 
     if [[ -e $QUANTUM_DIR/etc/quantum.conf ]]; then
       sudo mv $QUANTUM_DIR/etc/quantum.conf $Q_CONF_FILE
+    fi
+
+    if [[ -e $QUANTUM_DIR/etc/api-paste.ini ]]; then
+      sudo mv $QUANTUM_DIR/etc/api-paste.ini $Q_API_PASTE_FILE
     fi
 
     if is_service_enabled mysql; then
@@ -1133,7 +1171,6 @@ if is_service_enabled q-svc; then
             echo "mysql must be enabled in order to use the $Q_PLUGIN Quantum plugin."
             exit 1
     fi
-    sudo sed -i -e "s/^provider =.*$/provider = $Q_PLUGIN_CLASS/g" $Q_PLUGIN_INI_FILE
 
     if [[ "$Q_PLUGIN" = "ryu" ]]; then
         # launch ryu manager
@@ -1154,7 +1191,15 @@ EOF
         screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF"
     fi
 
-    screen_it q-svc "sleep 15; cd $QUANTUM_DIR && python $QUANTUM_DIR/bin/quantum-server $Q_CONF_FILE"
+    # Update either configuration file with plugin or old plugin file
+    # file checked below exists only in common config version
+    if [[ -e $QUANTUM_DIR/quantum/tests/etc/quantum.conf.test ]]; then
+        sudo sed -i -e "s/^core_plugin =.*$/core_plugin = $Q_PLUGIN_CLASS/g" $Q_CONF_FILE
+    else
+        sudo sed -i -e "s/^provider =.*$/provider = $Q_PLUGIN_CLASS/g" $Q_PLUGIN_INI_FILE
+    fi
+
+    screen_it q-svc "sleep 15 && cd $QUANTUM_DIR && python $QUANTUM_DIR/bin/quantum-server --config-file $Q_CONF_FILE"
 fi
 
 # Quantum agent (for compute nodes)
@@ -1258,6 +1303,36 @@ fi
 sudo chown `whoami` $NOVA_CONF_DIR
 
 cp -p $NOVA_DIR/etc/nova/policy.json $NOVA_CONF_DIR
+
+# If Nova ships the new rootwrap filters files, deploy them
+# (owned by root) and add a parameter to $NOVA_ROOTWRAP
+ROOTWRAP_SUDOER_CMD="$NOVA_ROOTWRAP"
+if [[ -d $NOVA_DIR/etc/nova/rootwrap ]]; then
+    # Wipe any existing rootwrap.d files first
+    if [[ -d $NOVA_CONF_DIR/rootwrap.d ]]; then
+        sudo rm -rf $NOVA_CONF_DIR/rootwrap.d
+    fi
+    # Deploy filters to /etc/nova/rootwrap.d
+    sudo mkdir -m 755 $NOVA_CONF_DIR/rootwrap.d
+    sudo cp $NOVA_DIR/etc/nova/rootwrap/*.filters $NOVA_CONF_DIR/rootwrap.d
+    sudo chown -R root:root $NOVA_CONF_DIR/rootwrap.d
+    sudo chmod 644 $NOVA_CONF_DIR/rootwrap.d/*
+    # Set up rootwrap.conf, pointing to /etc/nova/rootwrap.d
+    sudo cp $NOVA_DIR/etc/nova/rootwrap.conf $NOVA_CONF_DIR/
+    sudo sed -e "s:^path=.*$:path=$NOVA_CONF_DIR/rootwrap.d:" -i $NOVA_CONF_DIR/rootwrap.conf
+    sudo chown root:root $NOVA_CONF_DIR/rootwrap.conf
+    sudo chmod 0644 $NOVA_CONF_DIR/rootwrap.conf
+    # Specify rootwrap.conf as first parameter to nova-rootwrap
+    NOVA_ROOTWRAP="$NOVA_ROOTWRAP $NOVA_CONF_DIR/rootwrap.conf"
+    ROOTWRAP_SUDOER_CMD="$NOVA_ROOTWRAP *"
+fi
+
+# Set up the rootwrap sudoers
+TEMPFILE=`mktemp`
+echo "$USER ALL=(root) NOPASSWD: $ROOTWRAP_SUDOER_CMD" >$TEMPFILE
+chmod 0440 $TEMPFILE
+sudo chown root:root $TEMPFILE
+sudo mv $TEMPFILE /etc/sudoers.d/nova-rootwrap
 
 if is_service_enabled n-api; then
     # Use the sample http middleware configuration supplied in the
@@ -1441,6 +1516,9 @@ if is_service_enabled swift; then
     # Install memcached for swift.
     install_package memcached
 
+    # We make sure to kill all swift processes first
+    pkill -f -9 swift-
+
     # We first do a bit of setup by creating the directories and
     # changing the permissions so we can run it as our user.
 
@@ -1513,34 +1591,69 @@ if is_service_enabled swift; then
         sudo sed -i '/disable *= *yes/ { s/yes/no/ }' /etc/xinetd.d/rsync
     fi
 
-   # By default Swift will be installed with the tempauth middleware
-   # which has some default username and password if you have
-   # configured keystone it will checkout the directory.
-   if is_service_enabled key; then
-       swift_auth_server="s3token authtoken keystone"
-   else
-       swift_auth_server=tempauth
-   fi
+    # By default Swift will be installed with the tempauth middleware
+    # which has some default username and password if you have
+    # configured keystone it will checkout the directory.
+    if is_service_enabled key; then
+        swift_auth_server="s3token authtoken keystone"
+    else
+        swift_auth_server=tempauth
+    fi
 
-   # We do the install of the proxy-server and swift configuration
-   # replacing a few directives to match our configuration.
-   sed -e "
-       s,%SWIFT_CONFIG_DIR%,${SWIFT_CONFIG_DIR},g;
-       s,%USER%,$USER,g;
-       s,%SERVICE_TENANT_NAME%,$SERVICE_TENANT_NAME,g;
-       s,%SERVICE_USERNAME%,swift,g;
-       s,%SERVICE_PASSWORD%,$SERVICE_PASSWORD,g;
-       s,%KEYSTONE_SERVICE_PROTOCOL%,$KEYSTONE_SERVICE_PROTOCOL,g;
-       s,%SERVICE_TOKEN%,${SERVICE_TOKEN},g;
-       s,%KEYSTONE_API_PORT%,${KEYSTONE_API_PORT},g;
-       s,%KEYSTONE_AUTH_HOST%,${KEYSTONE_AUTH_HOST},g;
-       s,%KEYSTONE_AUTH_PORT%,${KEYSTONE_AUTH_PORT},g;
-       s,%KEYSTONE_AUTH_PROTOCOL%,${KEYSTONE_AUTH_PROTOCOL},g;
-       s/%AUTH_SERVER%/${swift_auth_server}/g;
-    " $FILES/swift/proxy-server.conf | \
-       sudo tee ${SWIFT_CONFIG_DIR}/proxy-server.conf
+    SWIFT_CONFIG_PROXY_SERVER=${SWIFT_CONFIG_DIR}/proxy-server.conf
+    cp ${SWIFT_DIR}/etc/proxy-server.conf-sample ${SWIFT_CONFIG_PROXY_SERVER}
 
-    sed -e "s/%SWIFT_HASH%/$SWIFT_HASH/" $FILES/swift/swift.conf > ${SWIFT_CONFIG_DIR}/swift.conf
+    iniuncomment ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT user
+    iniset ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT user ${USER}
+
+    iniuncomment ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT swift_dir
+    iniset ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT swift_dir ${SWIFT_CONFIG_DIR}
+
+    iniuncomment ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT workers
+    iniset ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT workers 1
+
+    iniuncomment ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT log_level
+    iniset ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT log_level DEBUG
+
+    iniuncomment ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT bind_port
+    iniset ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT bind_port ${SWIFT_DEFAULT_BIND_PORT:-8080}
+
+    iniset ${SWIFT_CONFIG_PROXY_SERVER} pipeline:main pipeline "catch_errors healthcheck cache ratelimit swift3 ${swift_auth_server} proxy-logging proxy-server"
+
+    iniset ${SWIFT_CONFIG_PROXY_SERVER} app:proxy-server account_autocreate true
+
+    cat <<EOF>>${SWIFT_CONFIG_PROXY_SERVER}
+
+[filter:keystone]
+paste.filter_factory = keystone.middleware.swift_auth:filter_factory
+operator_roles = Member,admin
+
+# NOTE(chmou): s3token middleware is not updated yet to use only
+# username and password.
+[filter:s3token]
+paste.filter_factory = keystone.middleware.s3_token:filter_factory
+auth_port = ${KEYSTONE_AUTH_PORT}
+auth_host = ${KEYSTONE_AUTH_HOST}
+auth_protocol = ${KEYSTONE_AUTH_PROTOCOL}
+auth_token = ${SERVICE_TOKEN}
+admin_token = ${SERVICE_TOKEN}
+
+[filter:authtoken]
+paste.filter_factory = keystone.middleware.auth_token:filter_factory
+auth_host = ${KEYSTONE_AUTH_HOST}
+auth_port = ${KEYSTONE_AUTH_PORT}
+auth_protocol = ${KEYSTONE_AUTH_PROTOCOL}
+auth_uri = ${KEYSTONE_SERVICE_PROTOCOL}://${KEYSTONE_SERVICE_HOST}:${KEYSTONE_SERVICE_PORT}/
+admin_tenant_name = ${SERVICE_TENANT_NAME}
+admin_user = swift
+admin_password = ${SERVICE_PASSWORD}
+
+[filter:swift3]
+use = egg:swift3#swift3
+EOF
+
+    cp ${SWIFT_DIR}/etc/swift.conf-sample ${SWIFT_CONFIG_DIR}/swift.conf
+    iniset ${SWIFT_CONFIG_DIR}/swift.conf swift-hash swift_hash_path_suffix ${SWIFT_HASH}
 
     # We need to generate a object/account/proxy configuration
     # emulating 4 nodes on different ports we have a little function
@@ -1550,16 +1663,35 @@ if is_service_enabled swift; then
         local bind_port=$2
         local log_facility=$3
         local node_number
+        local swift_node_config
 
         for node_number in $(seq ${SWIFT_REPLICAS}); do
             node_path=${SWIFT_DATA_DIR}/${node_number}
-            sed -e "
-                s,%SWIFT_CONFIG_DIR%,${SWIFT_CONFIG_DIR},;
-                s,%USER%,$USER,;
-                s,%NODE_PATH%,${node_path},;
-                s,%BIND_PORT%,${bind_port},;
-                s,%LOG_FACILITY%,${log_facility},
-            " $FILES/swift/${server_type}-server.conf > ${SWIFT_CONFIG_DIR}/${server_type}-server/${node_number}.conf
+            swift_node_config=${SWIFT_CONFIG_DIR}/${server_type}-server/${node_number}.conf
+
+            cp ${SWIFT_DIR}/etc/${server_type}-server.conf-sample ${swift_node_config}
+
+            iniuncomment ${swift_node_config} DEFAULT user
+            iniset ${swift_node_config} DEFAULT user ${USER}
+
+            iniuncomment ${swift_node_config} DEFAULT bind_port
+            iniset ${swift_node_config} DEFAULT bind_port ${bind_port}
+
+            iniuncomment ${swift_node_config} DEFAULT swift_dir
+            iniset ${swift_node_config} DEFAULT swift_dir ${SWIFT_CONFIG_DIR}
+
+            iniuncomment ${swift_node_config} DEFAULT devices
+            iniset ${swift_node_config} DEFAULT devices ${node_path}
+
+            iniuncomment ${swift_node_config} DEFAULT log_facility
+            iniset ${swift_node_config} DEFAULT log_facility LOG_LOCAL${log_facility}
+
+            iniuncomment ${swift_node_config} DEFAULT mount_check
+            iniset ${swift_node_config} DEFAULT mount_check false
+
+            iniuncomment ${swift_node_config} ${server_type}-replicator vm_test_mode
+            iniset ${swift_node_config} ${server_type}-replicator vm_test_mode yes
+
             bind_port=$(( ${bind_port} + 10 ))
             log_facility=$(( ${log_facility} + 1 ))
         done
@@ -1568,48 +1700,47 @@ if is_service_enabled swift; then
     generate_swift_configuration container 6011 2
     generate_swift_configuration account 6012 2
 
+    # We have some specific configuration for swift for rsyslog. See
+    # the file /etc/rsyslog.d/10-swift.conf for more info.
+    swift_log_dir=${SWIFT_DATA_DIR}/logs
+    rm -rf ${swift_log_dir}
+    mkdir -p ${swift_log_dir}/hourly
+    sudo chown -R $USER:adm ${swift_log_dir}
+    sed "s,%SWIFT_LOGDIR%,${swift_log_dir}," $FILES/swift/rsyslog.conf | sudo \
+        tee /etc/rsyslog.d/10-swift.conf
+    restart_service rsyslog
 
-   # We have some specific configuration for swift for rsyslog. See
-   # the file /etc/rsyslog.d/10-swift.conf for more info.
-   swift_log_dir=${SWIFT_DATA_DIR}/logs
-   rm -rf ${swift_log_dir}
-   mkdir -p ${swift_log_dir}/hourly
-   sudo chown -R $USER:adm ${swift_log_dir}
-   sed "s,%SWIFT_LOGDIR%,${swift_log_dir}," $FILES/swift/rsyslog.conf | sudo \
-       tee /etc/rsyslog.d/10-swift.conf
-   restart_service rsyslog
+    # This is where we create three different rings for swift with
+    # different object servers binding on different ports.
+    pushd ${SWIFT_CONFIG_DIR} >/dev/null && {
 
-   # This is where we create three different rings for swift with
-   # different object servers binding on different ports.
-   pushd ${SWIFT_CONFIG_DIR} >/dev/null && {
+        rm -f *.builder *.ring.gz backups/*.builder backups/*.ring.gz
 
-       rm -f *.builder *.ring.gz backups/*.builder backups/*.ring.gz
+        port_number=6010
+        swift-ring-builder object.builder create ${SWIFT_PARTITION_POWER_SIZE} ${SWIFT_REPLICAS} 1
+        for x in $(seq ${SWIFT_REPLICAS}); do
+            swift-ring-builder object.builder add z${x}-127.0.0.1:${port_number}/sdb1 1
+            port_number=$[port_number + 10]
+        done
+        swift-ring-builder object.builder rebalance
 
-       port_number=6010
-       swift-ring-builder object.builder create ${SWIFT_PARTITION_POWER_SIZE} ${SWIFT_REPLICAS} 1
-       for x in $(seq ${SWIFT_REPLICAS}); do
-           swift-ring-builder object.builder add z${x}-127.0.0.1:${port_number}/sdb1 1
-           port_number=$[port_number + 10]
-       done
-       swift-ring-builder object.builder rebalance
+        port_number=6011
+        swift-ring-builder container.builder create ${SWIFT_PARTITION_POWER_SIZE} ${SWIFT_REPLICAS} 1
+        for x in $(seq ${SWIFT_REPLICAS}); do
+            swift-ring-builder container.builder add z${x}-127.0.0.1:${port_number}/sdb1 1
+            port_number=$[port_number + 10]
+        done
+        swift-ring-builder container.builder rebalance
 
-       port_number=6011
-       swift-ring-builder container.builder create ${SWIFT_PARTITION_POWER_SIZE} ${SWIFT_REPLICAS} 1
-       for x in $(seq ${SWIFT_REPLICAS}); do
-           swift-ring-builder container.builder add z${x}-127.0.0.1:${port_number}/sdb1 1
-           port_number=$[port_number + 10]
-       done
-       swift-ring-builder container.builder rebalance
+        port_number=6012
+        swift-ring-builder account.builder create ${SWIFT_PARTITION_POWER_SIZE} ${SWIFT_REPLICAS} 1
+        for x in $(seq ${SWIFT_REPLICAS}); do
+            swift-ring-builder account.builder add z${x}-127.0.0.1:${port_number}/sdb1 1
+            port_number=$[port_number + 10]
+        done
+        swift-ring-builder account.builder rebalance
 
-       port_number=6012
-       swift-ring-builder account.builder create ${SWIFT_PARTITION_POWER_SIZE} ${SWIFT_REPLICAS} 1
-       for x in $(seq ${SWIFT_REPLICAS}); do
-           swift-ring-builder account.builder add z${x}-127.0.0.1:${port_number}/sdb1 1
-           port_number=$[port_number + 10]
-       done
-       swift-ring-builder account.builder rebalance
-
-   } && popd >/dev/null
+    } && popd >/dev/null
 
    # We then can start rsync.
     if [[ "$os_PACKAGE" = "deb" ]]; then
@@ -1632,17 +1763,18 @@ fi
 # Volume Service
 # --------------
 
-if is_service_enabled n-vol; then
-    #
-    # Configure a default volume group called 'nova-volumes' for the nova-volume
+if is_service_enabled cinder; then
+    init_cinder
+elif is_service_enabled n-vol; then
+    # Configure a default volume group called '`stack-volumes`' for the volume
     # service if it does not yet exist.  If you don't wish to use a file backed
-    # volume group, create your own volume group called 'nova-volumes' before
-    # invoking stack.sh.
+    # volume group, create your own volume group called ``stack-volumes`` before
+    # invoking ``stack.sh``.
     #
-    # By default, the backing file is 2G in size, and is stored in /opt/stack.
+    # By default, the backing file is 2G in size, and is stored in ``/opt/stack/data``.
 
     if ! sudo vgs $VOLUME_GROUP; then
-        VOLUME_BACKING_FILE=${VOLUME_BACKING_FILE:-$DEST/nova-volumes-backing-file}
+        VOLUME_BACKING_FILE=${VOLUME_BACKING_FILE:-$DATA_DIR/${VOLUME_GROUP}-backing-file}
         VOLUME_BACKING_FILE_SIZE=${VOLUME_BACKING_FILE_SIZE:-2052M}
         # Only create if the file doesn't already exists
         [[ -f $VOLUME_BACKING_FILE ]] || truncate -s $VOLUME_BACKING_FILE_SIZE $VOLUME_BACKING_FILE
@@ -1785,7 +1917,21 @@ fi
 if [ "$API_RATE_LIMIT" != "True" ]; then
     add_nova_opt "api_rate_limit=False"
 fi
+if [ "$LOG_COLOR" == "True" ] && [ "$SYSLOG" == "False" ]; then
+    # Add color to logging output
+    add_nova_opt "logging_context_format_string=%(asctime)s %(color)s%(levelname)s %(name)s [[01;36m%(request_id)s [00;36m%(user_name)s %(project_name)s%(color)s] [01;35m%(instance)s%(color)s%(message)s[00m"
+    add_nova_opt "logging_default_format_string=%(asctime)s %(color)s%(levelname)s %(name)s [[00;36m-%(color)s] [01;35m%(instance)s%(color)s%(message)s[00m"
+    add_nova_opt "logging_debug_format_suffix=[00;33mfrom (pid=%(process)d) %(funcName)s %(pathname)s:%(lineno)d[00m"
+    add_nova_opt "logging_exception_prefix=%(color)s%(asctime)s TRACE %(name)s [01;35m%(instance)s[00m"
+else
+    # Show user_name and project_name instead of user_id and project_id
+    add_nova_opt "logging_context_format_string=%(asctime)s %(levelname)s %(name)s [%(request_id)s %(user_name)s %(project_name)s] %(instance)s%(message)s"
+fi
 
+# If cinder is enabled, use the cinder volume driver
+if is_service_enabled cinder; then
+    add_nova_opt "volume_api_class=nova.volume.cinder.API"
+fi
 
 # Provide some transition from EXTRA_FLAGS to EXTRA_OPTS
 if [[ -z "$EXTRA_OPTS" && -n "$EXTRA_FLAGS" ]]; then
@@ -1953,6 +2099,7 @@ fi
 
 # launch the nova-api and wait for it to answer before continuing
 if is_service_enabled n-api; then
+    add_nova_opt "enabled_apis=$NOVA_ENABLED_APIS"
     screen_it n-api "cd $NOVA_DIR && $NOVA_DIR/bin/nova-api"
     echo "Waiting for nova-api to start..."
     if ! timeout $SERVICE_TIMEOUT sh -c "while ! http_proxy= wget -q -O- http://127.0.0.1:8774; do sleep 1; done"; then
@@ -1988,6 +2135,9 @@ screen_it n-sch "cd $NOVA_DIR && $NOVA_DIR/bin/nova-scheduler"
 screen_it n-novnc "cd $NOVNC_DIR && ./utils/nova-novncproxy --config-file $NOVA_CONF_DIR/$NOVA_CONF --web ."
 screen_it n-xvnc "cd $NOVA_DIR && ./bin/nova-xvpvncproxy --config-file $NOVA_CONF_DIR/$NOVA_CONF"
 screen_it n-cauth "cd $NOVA_DIR && ./bin/nova-consoleauth"
+if is_service_enabled cinder; then
+    start_cinder
+fi
 screen_it horizon "cd $HORIZON_DIR && sudo tail -f /var/log/$APACHE_NAME/horizon_error.log"
 screen_it swift "cd $SWIFT_DIR && $SWIFT_DIR/bin/swift-proxy-server ${SWIFT_CONFIG_DIR}/proxy-server.conf -v"
 
@@ -2018,7 +2168,7 @@ if is_service_enabled g-reg; then
 
     ADMIN_USER=admin
     ADMIN_TENANT=admin
-    TOKEN=`curl -s -d  "{\"auth\":{\"passwordCredentials\": {\"username\": \"$ADMIN_USER\", \"password\": \"$ADMIN_PASSWORD\"}, \"tenantName\": \"$ADMIN_TENANT\"}}" -H "Content-type: application/json" http://$HOST_IP:5000/v2.0/tokens | python -c "import sys; import json; tok = json.loads(sys.stdin.read()); print tok['access']['token']['id'];"`
+    TOKEN=$(keystone --os_tenant_name $ADMIN_TENANT --os_username $ADMIN_USER --os_password $ADMIN_PASSWORD --os_auth_url http://$HOST_IP:5000/v2.0 token-get | grep ' id ' | get_field 2)
 
     # Option to upload legacy ami-tty, which works with xenserver
     if [[ -n "$UPLOAD_LEGACY_TTY" ]]; then
@@ -2028,7 +2178,7 @@ if is_service_enabled g-reg; then
     for image_url in ${IMAGE_URLS//,/ }; do
         # Downloads the image (uec ami+aki style), then extracts it.
         IMAGE_FNAME=`basename "$image_url"`
-        if [ ! -f $FILES/$IMAGE_FNAME ]; then
+        if [[ ! -f $FILES/$IMAGE_FNAME || "$(stat -c "%s" $FILES/$IMAGE_FNAME)" = "0" ]]; then
             wget -c $image_url -O $FILES/$IMAGE_FNAME
         fi
 
