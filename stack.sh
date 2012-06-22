@@ -1188,7 +1188,7 @@ if is_service_enabled q-svc; then
 --ofp_listen_host=$RYU_OFP_HOST
 --ofp_tcp_listen_port=$RYU_OFP_PORT
 EOF
-        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF"
+        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_isolation"
     fi
 
     # Update either configuration file with plugin or old plugin file
@@ -1257,10 +1257,10 @@ if is_service_enabled q-agt; then
         sudo ovs-vsctl --no-wait add-port $OVS_BRIDGE $Q_INTERFACE
         sudo ifconfig $Q_INTERFACE up
 
-        sudo sed -i -e "s/.*local-ip = .*/local-ip = $HOST_IP/g" /$Q_PLUGIN_CONF_FILE
-        sudo sed -i -e "s/.*integration-bridge = .*/integration-bridge = $OVS_BRIDGE/g" /$Q_PLUGIN_CONF_FILE
-        sudo sed -i -e "s/.*openflow-controller = .*/openflow-controller = $RYU_OFP_HOST:$RYU_OFP_PORT/g" /$Q_PLUGIN_CONF_FILE
-        sudo sed -i -e "s/.*openflow-rest-api = .*/openflow-rest-api = $RYU_API_HOST:$RYU_API_PORT/g" /$Q_PLUGIN_CONF_FILE
+        sudo sed -i -e "s/.*local_ip = .*/local_ip = $HOST_IP/g" /$Q_PLUGIN_CONF_FILE
+        sudo sed -i -e "s/.*integration_bridge = .*/integration_bridge = $OVS_BRIDGE/g" /$Q_PLUGIN_CONF_FILE
+        sudo sed -i -e "s/.*openflow_controller = .*/openflow_controller = $RYU_OFP_HOST:$RYU_OFP_PORT/g" /$Q_PLUGIN_CONF_FILE
+        sudo sed -i -e "s/.*openflow_rest_api = .*/openflow_rest_api = $RYU_API_HOST:$RYU_API_PORT/g" /$Q_PLUGIN_CONF_FILE
 
         AGENT_BINARY=$QUANTUM_DIR/quantum/plugins/ryu/agent/ryu_quantum_agent.py
     fi
