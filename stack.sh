@@ -89,6 +89,16 @@ DEST=${DEST:-/opt/stack}
 # Sanity Check
 # ============
 
+# We are looking for services with a - at the beginning to force
+# excluding those services. For example if you want to install all the default
+# services but not nova-volume (n-vol) you can have this set in your localrc :
+# ENABLED_SERVICES+=",-n-vol"
+for service in ${ENABLED_SERVICES//,/ }; do
+    if [[ ${service} == -* ]]; then
+        ENABLED_SERVICES=$(echo ${ENABLED_SERVICES}|sed -r "s/(,)?(-)?${service#-}(,)?/,/g")
+    fi
+done
+
 # Warn users who aren't on an explicitly supported distro, but allow them to
 # override check and attempt installation with ``FORCE=yes ./stack``
 if [[ ! ${DISTRO} =~ (oneiric|precise|quantal|f16) ]]; then
@@ -209,10 +219,21 @@ else
     sudo rm -f /etc/sudoers.d/stack_sh_nova
 fi
 
+# Create the destination directory and ensure it is writable by the user
+sudo mkdir -p $DEST
+if [ ! -w $DEST ]; then
+    sudo chown `whoami` $DEST
+fi
+
 # Set True to configure ``stack.sh`` to run cleanly without Internet access.
 # ``stack.sh`` must have been previously run with Internet access to install
 # prerequisites and initialize ``$DEST``.
 OFFLINE=`trueorfalse False $OFFLINE`
+
+# Set True to configure ``stack.sh`` to exit with an error code if it is asked
+# to clone any git repositories.  If devstack is used in a testing environment,
+# this may be used to ensure that the correct code is being tested.
+ERROR_ON_CLONE=`trueorfalse False $ERROR_ON_CLONE`
 
 # Destination path for service data
 DATA_DIR=${DATA_DIR:-${DEST}/data}
@@ -597,12 +618,6 @@ failed() {
 # an error.  It is also useful for following along as the install occurs.
 set -o xtrace
 
-# create the destination directory and ensure it is writable by the user
-sudo mkdir -p $DEST
-if [ ! -w $DEST ]; then
-    sudo chown `whoami` $DEST
-fi
-
 
 # Install Packages
 # ================
@@ -776,6 +791,10 @@ fi
 if is_service_enabled g-api n-api; then
     setup_develop $GLANCE_DIR
 fi
+
+# Do this _after_ glance is installed to override the old binary
+setup_develop $GLANCECLIENT_DIR
+
 setup_develop $NOVA_DIR
 if is_service_enabled horizon; then
     setup_develop $HORIZON_DIR
@@ -796,9 +815,6 @@ fi
 if is_service_enabled ryu; then
     cd $RYU_DIR; sudo python setup.py develop
 fi
-
-# Do this _after_ glance is installed to override the old binary
-setup_develop $GLANCECLIENT_DIR
 
 
 # Syslog
@@ -1141,20 +1157,15 @@ if is_service_enabled quantum; then
             echo "OVS 1.4+ is required for tunneling between multiple hosts."
             exit 1
         fi
-        sudo sed -i -e "s/.*enable-tunneling = .*$/enable-tunneling = $OVS_ENABLE_TUNNELING/g" /$Q_PLUGIN_CONF_FILE
+        sudo sed -i -e "s/.*enable_tunneling = .*$/enable_tunneling = $OVS_ENABLE_TUNNELING/g" /$Q_PLUGIN_CONF_FILE
     fi
 fi
 
 # Quantum service (for controller node)
 if is_service_enabled q-svc; then
-    # must remove this file from existing location, otherwise Quantum will prefer it
-    if [[ -e $QUANTUM_DIR/etc/plugins.ini ]]; then
-        # Support prior to common config
-        Q_PLUGIN_INI_FILE=/etc/quantum/plugins.ini
-        sudo mv $QUANTUM_DIR/etc/plugins.ini $Q_PLUGIN_INI_FILE
-    fi
     Q_CONF_FILE=/etc/quantum/quantum.conf
     Q_API_PASTE_FILE=/etc/quantum/api-paste.ini
+    Q_POLICY_FILE=/etc/quantum/policy.json
 
     if [[ -e $QUANTUM_DIR/etc/quantum.conf ]]; then
       sudo mv $QUANTUM_DIR/etc/quantum.conf $Q_CONF_FILE
@@ -1162,6 +1173,10 @@ if is_service_enabled q-svc; then
 
     if [[ -e $QUANTUM_DIR/etc/api-paste.ini ]]; then
       sudo mv $QUANTUM_DIR/etc/api-paste.ini $Q_API_PASTE_FILE
+    fi
+
+    if [[ -e $QUANTUM_DIR/etc/policy.json ]]; then
+      sudo mv $QUANTUM_DIR/etc/policy.json $Q_POLICY_FILE
     fi
 
     if is_service_enabled mysql; then
@@ -1191,14 +1206,8 @@ EOF
         screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_isolation"
     fi
 
-    # Update either configuration file with plugin or old plugin file
-    # file checked below exists only in common config version
-    if [[ -e $QUANTUM_DIR/quantum/tests/etc/quantum.conf.test ]]; then
-        sudo sed -i -e "s/^core_plugin =.*$/core_plugin = $Q_PLUGIN_CLASS/g" $Q_CONF_FILE
-    else
-        sudo sed -i -e "s/^provider =.*$/provider = $Q_PLUGIN_CLASS/g" $Q_PLUGIN_INI_FILE
-    fi
-
+    # Update either configuration file with plugin
+    sudo sed -i -e "s/^core_plugin =.*$/core_plugin = $Q_PLUGIN_CLASS/g" $Q_CONF_FILE
     screen_it q-svc "sleep 15 && cd $QUANTUM_DIR && python $QUANTUM_DIR/bin/quantum-server --config-file $Q_CONF_FILE"
 fi
 
@@ -1307,19 +1316,19 @@ cp -p $NOVA_DIR/etc/nova/policy.json $NOVA_CONF_DIR
 # If Nova ships the new rootwrap filters files, deploy them
 # (owned by root) and add a parameter to $NOVA_ROOTWRAP
 ROOTWRAP_SUDOER_CMD="$NOVA_ROOTWRAP"
-if [[ -d $NOVA_DIR/etc/nova/rootwrap ]]; then
+if [[ -d $NOVA_DIR/etc/nova/rootwrap.d ]]; then
     # Wipe any existing rootwrap.d files first
     if [[ -d $NOVA_CONF_DIR/rootwrap.d ]]; then
         sudo rm -rf $NOVA_CONF_DIR/rootwrap.d
     fi
     # Deploy filters to /etc/nova/rootwrap.d
     sudo mkdir -m 755 $NOVA_CONF_DIR/rootwrap.d
-    sudo cp $NOVA_DIR/etc/nova/rootwrap/*.filters $NOVA_CONF_DIR/rootwrap.d
+    sudo cp $NOVA_DIR/etc/nova/rootwrap.d/*.filters $NOVA_CONF_DIR/rootwrap.d
     sudo chown -R root:root $NOVA_CONF_DIR/rootwrap.d
     sudo chmod 644 $NOVA_CONF_DIR/rootwrap.d/*
     # Set up rootwrap.conf, pointing to /etc/nova/rootwrap.d
     sudo cp $NOVA_DIR/etc/nova/rootwrap.conf $NOVA_CONF_DIR/
-    sudo sed -e "s:^path=.*$:path=$NOVA_CONF_DIR/rootwrap.d:" -i $NOVA_CONF_DIR/rootwrap.conf
+    sudo sed -e "s:^filters_path=.*$:filters_path=$NOVA_CONF_DIR/rootwrap.d:" -i $NOVA_CONF_DIR/rootwrap.conf
     sudo chown root:root $NOVA_CONF_DIR/rootwrap.conf
     sudo chmod 0644 $NOVA_CONF_DIR/rootwrap.conf
     # Specify rootwrap.conf as first parameter to nova-rootwrap
@@ -2013,7 +2022,7 @@ if is_service_enabled key; then
 
     KEYSTONE_CONF_DIR=${KEYSTONE_CONF_DIR:-/etc/keystone}
     KEYSTONE_CONF=$KEYSTONE_CONF_DIR/keystone.conf
-    KEYSTONE_CATALOG=$KEYSTONE_CONF_DIR/default_catalog.templates
+    KEYSTONE_CATALOG_BACKEND=${KEYSTONE_CATALOG_BACKEND:-template}
 
     if [[ ! -d $KEYSTONE_CONF_DIR ]]; then
         sudo mkdir -p $KEYSTONE_CONF_DIR
@@ -2024,41 +2033,49 @@ if is_service_enabled key; then
         cp -p $KEYSTONE_DIR/etc/keystone.conf.sample $KEYSTONE_CONF
         cp -p $KEYSTONE_DIR/etc/policy.json $KEYSTONE_CONF_DIR
     fi
-    cp -p $FILES/default_catalog.templates $KEYSTONE_CATALOG
 
     # Rewrite stock keystone.conf:
     iniset $KEYSTONE_CONF DEFAULT admin_token "$SERVICE_TOKEN"
     iniset $KEYSTONE_CONF sql connection "$BASE_SQL_CONN/keystone?charset=utf8"
     iniset $KEYSTONE_CONF ec2 driver "keystone.contrib.ec2.backends.sql.Ec2"
-    # Configure keystone.conf to use templates
-    iniset $KEYSTONE_CONF catalog driver "keystone.catalog.backends.templated.TemplatedCatalog"
-    iniset $KEYSTONE_CONF catalog template_file "$KEYSTONE_CATALOG"
     sed -e "
         /^pipeline.*ec2_extension crud_/s|ec2_extension crud_extension|ec2_extension s3_extension crud_extension|;
     " -i $KEYSTONE_CONF
     # Append the S3 bits
     iniset $KEYSTONE_CONF filter:s3_extension paste.filter_factory "keystone.contrib.s3:S3Extension.factory"
 
-    # Add swift endpoints to service catalog if swift is enabled
-    if is_service_enabled swift; then
-        echo "catalog.RegionOne.object_store.publicURL = http://%SERVICE_HOST%:8080/v1/AUTH_\$(tenant_id)s" >> $KEYSTONE_CATALOG
-        echo "catalog.RegionOne.object_store.adminURL = http://%SERVICE_HOST%:8080/" >> $KEYSTONE_CATALOG
-        echo "catalog.RegionOne.object_store.internalURL = http://%SERVICE_HOST%:8080/v1/AUTH_\$(tenant_id)s" >> $KEYSTONE_CATALOG
-        echo "catalog.RegionOne.object_store.name = Swift Service" >> $KEYSTONE_CATALOG
-    fi
+    if [[ "$KEYSTONE_CATALOG_BACKEND" = "sql" ]]; then
+        # Configure keystone.conf to use sql
+        iniset $KEYSTONE_CONF catalog driver keystone.catalog.backends.sql.Catalog
+        inicomment $KEYSTONE_CONF catalog template_file
+    else
+        KEYSTONE_CATALOG=$KEYSTONE_CONF_DIR/default_catalog.templates
+        cp -p $FILES/default_catalog.templates $KEYSTONE_CATALOG
+        # Add swift endpoints to service catalog if swift is enabled
+        if is_service_enabled swift; then
+            echo "catalog.RegionOne.object_store.publicURL = http://%SERVICE_HOST%:8080/v1/AUTH_\$(tenant_id)s" >> $KEYSTONE_CATALOG
+            echo "catalog.RegionOne.object_store.adminURL = http://%SERVICE_HOST%:8080/" >> $KEYSTONE_CATALOG
+            echo "catalog.RegionOne.object_store.internalURL = http://%SERVICE_HOST%:8080/v1/AUTH_\$(tenant_id)s" >> $KEYSTONE_CATALOG
+            echo "catalog.RegionOne.object_store.name = Swift Service" >> $KEYSTONE_CATALOG
+        fi
 
-    # Add quantum endpoints to service catalog if quantum is enabled
-    if is_service_enabled quantum; then
-        echo "catalog.RegionOne.network.publicURL = http://%SERVICE_HOST%:9696/" >> $KEYSTONE_CATALOG
-        echo "catalog.RegionOne.network.adminURL = http://%SERVICE_HOST%:9696/" >> $KEYSTONE_CATALOG
-        echo "catalog.RegionOne.network.internalURL = http://%SERVICE_HOST%:9696/" >> $KEYSTONE_CATALOG
-        echo "catalog.RegionOne.network.name = Quantum Service" >> $KEYSTONE_CATALOG
-    fi
+        # Add quantum endpoints to service catalog if quantum is enabled
+        if is_service_enabled quantum; then
+            echo "catalog.RegionOne.network.publicURL = http://%SERVICE_HOST%:9696/" >> $KEYSTONE_CATALOG
+            echo "catalog.RegionOne.network.adminURL = http://%SERVICE_HOST%:9696/" >> $KEYSTONE_CATALOG
+            echo "catalog.RegionOne.network.internalURL = http://%SERVICE_HOST%:9696/" >> $KEYSTONE_CATALOG
+            echo "catalog.RegionOne.network.name = Quantum Service" >> $KEYSTONE_CATALOG
+        fi
 
-    sudo sed -e "
-        s,%SERVICE_HOST%,$SERVICE_HOST,g;
-        s,%S3_SERVICE_PORT%,$S3_SERVICE_PORT,g;
-    " -i $KEYSTONE_CATALOG
+        sudo sed -e "
+            s,%SERVICE_HOST%,$SERVICE_HOST,g;
+            s,%S3_SERVICE_PORT%,$S3_SERVICE_PORT,g;
+        " -i $KEYSTONE_CATALOG
+
+        # Configure keystone.conf to use templates
+        iniset $KEYSTONE_CONF catalog driver "keystone.catalog.backends.templated.TemplatedCatalog"
+        iniset $KEYSTONE_CONF catalog template_file "$KEYSTONE_CATALOG"
+    fi
 
     # Set up logging
     LOGGING_ROOT="devel"
@@ -2070,25 +2087,37 @@ if is_service_enabled key; then
     iniset $KEYSTONE_CONF_DIR/logging.conf logger_root level "DEBUG"
     iniset $KEYSTONE_CONF_DIR/logging.conf logger_root handlers "devel,production"
 
-    # initialize keystone database
+    # Set up the keystone database
     $KEYSTONE_DIR/bin/keystone-manage db_sync
 
     # launch keystone and wait for it to answer before continuing
     screen_it key "cd $KEYSTONE_DIR && $KEYSTONE_DIR/bin/keystone-all --config-file $KEYSTONE_CONF $KEYSTONE_LOG_CONFIG -d --debug"
     echo "Waiting for keystone to start..."
-    if ! timeout $SERVICE_TIMEOUT sh -c "while ! http_proxy= wget -O- $KEYSTONE_AUTH_PROTOCOL://$SERVICE_HOST:$KEYSTONE_API_PORT/v2.0/ 2>&1 | grep -q '200 OK'; do sleep 1; done"; then
+    if ! timeout $SERVICE_TIMEOUT sh -c "while http_proxy= wget -O- $KEYSTONE_AUTH_PROTOCOL://$SERVICE_HOST:$KEYSTONE_API_PORT/v2.0/ 2>&1 | grep -q 'refused'; do sleep 1; done"; then
       echo "keystone did not start"
       exit 1
     fi
 
     # keystone_data.sh creates services, admin and demo users, and roles.
     SERVICE_ENDPOINT=$KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_AUTH_HOST:$KEYSTONE_AUTH_PORT/v2.0
-    ADMIN_PASSWORD=$ADMIN_PASSWORD SERVICE_TENANT_NAME=$SERVICE_TENANT_NAME SERVICE_PASSWORD=$SERVICE_PASSWORD SERVICE_TOKEN=$SERVICE_TOKEN SERVICE_ENDPOINT=$SERVICE_ENDPOINT DEVSTACK_DIR=$TOP_DIR ENABLED_SERVICES=$ENABLED_SERVICES \
+
+    ADMIN_PASSWORD=$ADMIN_PASSWORD SERVICE_TENANT_NAME=$SERVICE_TENANT_NAME SERVICE_PASSWORD=$SERVICE_PASSWORD \
+    SERVICE_TOKEN=$SERVICE_TOKEN SERVICE_ENDPOINT=$SERVICE_ENDPOINT SERVICE_HOST=$SERVICE_HOST \
+    S3_SERVICE_PORT=$S3_SERVICE_PORT KEYSTONE_CATALOG_BACKEND=$KEYSTONE_CATALOG_BACKEND \
+    DEVSTACK_DIR=$TOP_DIR ENABLED_SERVICES=$ENABLED_SERVICES \
         bash $FILES/keystone_data.sh
+
+    # Set up auth creds now that keystone is bootstrapped
+    export OS_AUTH_URL=$SERVICE_ENDPOINT
+    export OS_TENANT_NAME=admin
+    export OS_USERNAME=admin
+    export OS_PASSWORD=$ADMIN_PASSWORD
 
     # create an access key and secret key for nova ec2 register image
     if is_service_enabled swift && is_service_enabled nova; then
-        CREDS=$(keystone --os_auth_url=$SERVICE_ENDPOINT --os_username=nova --os_password=$SERVICE_PASSWORD --os_tenant_name=$SERVICE_TENANT_NAME ec2-credentials-create)
+        NOVA_USER_ID=$(keystone user-list | grep ' nova ' | get_field 1)
+        NOVA_TENANT_ID=$(keystone tenant-list | grep " $SERVICE_TENANT_NAME " | get_field 1)
+        CREDS=$(keystone ec2-credentials-create --user_id $NOVA_USER_ID --tenant_id $NOVA_TENANT_ID)
         ACCESS_KEY=$(echo "$CREDS" | awk '/ access / { print $4 }')
         SECRET_KEY=$(echo "$CREDS" | awk '/ secret / { print $4 }')
         add_nova_opt "s3_access_key=$ACCESS_KEY"
@@ -2166,9 +2195,7 @@ if is_service_enabled g-reg; then
     # Create a directory for the downloaded image tarballs.
     mkdir -p $FILES/images
 
-    ADMIN_USER=admin
-    ADMIN_TENANT=admin
-    TOKEN=$(keystone --os_tenant_name $ADMIN_TENANT --os_username $ADMIN_USER --os_password $ADMIN_PASSWORD --os_auth_url http://$HOST_IP:5000/v2.0 token-get | grep ' id ' | get_field 2)
+    TOKEN=$(keystone  token-get | grep ' id ' | get_field 2)
 
     # Option to upload legacy ami-tty, which works with xenserver
     if [[ -n "$UPLOAD_LEGACY_TTY" ]]; then
