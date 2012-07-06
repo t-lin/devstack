@@ -168,14 +168,12 @@ if [[ $EUID -eq 0 ]]; then
     # ability to run sudo
     if [[ "$os_PACKAGE" = "deb" ]]; then
         dpkg -l sudo || apt_get update && install_package sudo
-        STACK_GROUP=sudo
     else
         rpm -qa | grep sudo || install_package sudo
-        STACK_GROUP=wheel
     fi
     if ! getent passwd stack >/dev/null; then
         echo "Creating a user called stack"
-        useradd -U -G $STACK_GROUP -s /bin/bash -d $DEST -m stack
+        useradd -U -s /bin/bash -d $DEST -m stack
     fi
 
     echo "Giving stack user passwordless sudo priviledges"
@@ -308,7 +306,7 @@ SCHEDULER=${SCHEDULER:-nova.scheduler.filter_scheduler.FilterScheduler}
 HOST_IP_IFACE=${HOST_IP_IFACE:-eth0}
 # Use the eth0 IP unless an explicit is set by ``HOST_IP`` environment variable
 if [ -z "$HOST_IP" -o "$HOST_IP" == "dhcp" ]; then
-    HOST_IP=`LC_ALL=C /sbin/ifconfig ${HOST_IP_IFACE} | grep -m 1 'inet addr:'| cut -d: -f2 | awk '{print $1}'`
+    HOST_IP=`LC_ALL=C ip -f inet addr show ${HOST_IP_IFACE} | awk '/inet/ {split($2,parts,"/");  print parts[1]}' | head -n1`
     if [ "$HOST_IP" = "" ]; then
         echo "Could not determine host ip address."
         echo "Either localrc specified dhcp on ${HOST_IP_IFACE} or defaulted to eth0"
@@ -624,86 +622,6 @@ set -o xtrace
 #
 # Openstack uses a fair number of other projects.
 
-# get_packages() collects a list of package names of any type from the
-# prerequisite files in ``files/{apts|pips}``.  The list is intended
-# to be passed to a package installer such as apt or pip.
-#
-# Only packages required for the services in ENABLED_SERVICES will be
-# included.  Two bits of metadata are recognized in the prerequisite files:
-# - ``# NOPRIME`` defers installation to be performed later in stack.sh
-# - ``# dist:DISTRO`` or ``dist:DISTRO1,DISTRO2`` limits the selection
-#   of the package to the distros listed.  The distro names are case insensitive.
-#
-# get_packages dir
-function get_packages() {
-    local package_dir=$1
-    local file_to_parse
-    local service
-
-    if [[ -z "$package_dir" ]]; then
-        echo "No package directory supplied"
-        return 1
-    fi
-    for service in general ${ENABLED_SERVICES//,/ }; do
-        # Allow individual services to specify dependencies
-        if [[ -e ${package_dir}/${service} ]]; then
-            file_to_parse="${file_to_parse} $service"
-        fi
-        # NOTE(sdague) n-api needs glance for now because that's where
-        # glance client is
-        if [[ $service == n-api ]]; then
-            if [[ ! $file_to_parse =~ nova ]]; then
-                file_to_parse="${file_to_parse} nova"
-            fi
-            if [[ ! $file_to_parse =~ glance ]]; then
-                file_to_parse="${file_to_parse} glance"
-            fi
-        elif [[ $service == c-* ]]; then
-            if [[ ! $file_to_parse =~ cinder ]]; then
-                file_to_parse="${file_to_parse} cinder"
-            fi
-        elif [[ $service == n-* ]]; then
-            if [[ ! $file_to_parse =~ nova ]]; then
-                file_to_parse="${file_to_parse} nova"
-            fi
-        elif [[ $service == g-* ]]; then
-            if [[ ! $file_to_parse =~ glance ]]; then
-                file_to_parse="${file_to_parse} glance"
-            fi
-        elif [[ $service == key* ]]; then
-            if [[ ! $file_to_parse =~ keystone ]]; then
-                file_to_parse="${file_to_parse} keystone"
-            fi
-        fi
-    done
-
-    for file in ${file_to_parse}; do
-        local fname=${package_dir}/${file}
-        local OIFS line package distros distro
-        [[ -e $fname ]] || continue
-
-        OIFS=$IFS
-        IFS=$'\n'
-        for line in $(<${fname}); do
-            if [[ $line =~ "NOPRIME" ]]; then
-                continue
-            fi
-
-            if [[ $line =~ (.*)#.*dist:([^ ]*) ]]; then
-                # We are using BASH regexp matching feature.
-                package=${BASH_REMATCH[1]}
-                distros=${BASH_REMATCH[2]}
-                # In bash ${VAR,,} will lowecase VAR
-                [[ ${distros,,} =~ ${DISTRO,,} ]] && echo $package
-                continue
-            fi
-
-            echo ${line%#*}
-        done
-        IFS=$OIFS
-    done
-}
-
 # install package requirements
 if [[ "$os_PACKAGE" = "deb" ]]; then
     apt_get update
@@ -918,7 +836,7 @@ EOF
     sudo sed -i '/^bind-address/s/127.0.0.1/0.0.0.0/g' $MY_CONF
 
     # Set default db type to InnoDB
-    if grep -q "default-storage-engine" $MY_CONF; then
+    if sudo grep -q "default-storage-engine" $MY_CONF; then
         # Change it
         sudo bash -c "source $TOP_DIR/functions; iniset $MY_CONF mysqld default-storage-engine InnoDB"
     else
