@@ -1546,7 +1546,7 @@ if is_service_enabled swift; then
     iniuncomment ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT bind_port
     iniset ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT bind_port ${SWIFT_DEFAULT_BIND_PORT:-8080}
 
-    iniset ${SWIFT_CONFIG_PROXY_SERVER} pipeline:main pipeline "catch_errors healthcheck cache ratelimit swift3 ${swift_auth_server} proxy-logging proxy-server"
+    iniset ${SWIFT_CONFIG_PROXY_SERVER} pipeline:main pipeline "catch_errors healthcheck cache ratelimit swift3 tempurl ${swift_auth_server} proxy-logging proxy-server"
 
     iniset ${SWIFT_CONFIG_PROXY_SERVER} app:proxy-server account_autocreate true
 
@@ -1575,6 +1575,7 @@ auth_uri = ${KEYSTONE_SERVICE_PROTOCOL}://${KEYSTONE_SERVICE_HOST}:${KEYSTONE_SE
 admin_tenant_name = ${SERVICE_TENANT_NAME}
 admin_user = swift
 admin_password = ${SERVICE_PASSWORD}
+delay_auth_decision = 1
 
 [filter:swift3]
 use = egg:swift3#swift3
@@ -1681,6 +1682,14 @@ EOF
    # proxy service so we can run it in foreground in screen.
    # ``swift-init ... {stop|restart}`` exits with '1' if no servers are running,
    # ignore it just in case
+   sudo rm WebOb-1.1.1 -rf
+   sudo rm WebOb-1.1.1.zip
+   wget http://pypi.python.org/packages/source/W/WebOb/WebOb-1.1.1.zip#md5=989155580606c1f5472fced859976b4b
+   unzip WebOb-1.1.1.zip
+   cd WebOb-1.1.1
+   sudo python setup.py install
+   cd ..
+   
    swift-init all restart || true
    swift-init proxy stop || true
 
