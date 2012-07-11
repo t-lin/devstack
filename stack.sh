@@ -1682,10 +1682,10 @@ EOF
    # proxy service so we can run it in foreground in screen.
    # ``swift-init ... {stop|restart}`` exits with '1' if no servers are running,
    # ignore it just in case
-   sudo rm WebOb-1.1.1 -rf
-   sudo rm WebOb-1.1.1.zip
-   wget http://pypi.python.org/packages/source/W/WebOb/WebOb-1.1.1.zip#md5=989155580606c1f5472fced859976b4b
-   unzip WebOb-1.1.1.zip
+   if [[ ! -d WebOb-1.1.1 ]]; then
+     wget http://pypi.python.org/packages/source/W/WebOb/WebOb-1.1.1.zip#md5=989155580606c1f5472fced859976b4b
+     unzip WebOb-1.1.1.zip
+   fi
    cd WebOb-1.1.1
    sudo python setup.py install
    cd ..
