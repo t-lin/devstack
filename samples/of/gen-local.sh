@@ -80,6 +80,14 @@ if [ $HOST_IP_READ ]; then
   HOST_IP=$HOST_IP_READ
 fi
 
+PUBLIC_IP=$HOST_IP
+echo "What is the public host address for services endpoints? [$HOST_IP]"
+read PUBLIC_IP_READ
+
+if [ $PUBLIC_IP_READ ]; then
+  PUBLIC_IP=$PUBLIC_IP_READ
+fi
+
 FLOATING_RANGE=10.10.10.100
 echo "What is the floating range? [$FLOATING_RANGE]"
 read FLOATING_RANGE_READ
@@ -105,6 +113,24 @@ if [[ "$USE_OF" == "y" ]]; then
 fi
 
 if [[ $AGENT == 0 ]]; then
+
+  PUBLIC_INT=$HOST_INT
+  echo "Which interface should be used for public connnections [$HOST_INT]?"
+  read PUBLIC_INT_READ
+
+  if [ $PUBLIC_INT_READ ]; then 
+
+    if ! interface_exists $PUBLIC_INT_READ; then
+
+      echo "There is no interface "$PUBLIC_INT_READ
+      exit 1
+
+    fi
+
+    PUBLIC_INT=$PUBLIC_INT_READ
+
+  fi
+
   cp $OF_DIR/ctrl-localrc localrc
   if [[ $USE_OF == "y" ]]; then
     sed -i -e 's/RYU_ENABLED_//g' localrc
@@ -114,7 +140,9 @@ if [[ $AGENT == 0 ]]; then
 
   sed -i -e 's/\${HOST_IP_IFACE}/'$HOST_INT'/g' localrc
   sed -i -e 's/\${FLAT_INTERFACE}/'$FLAT_INT'/g' localrc
+  sed -i -e 's/\${PUBLIC_INTERFACE}/'$PUBLIC_INT'/g' localrc
   sed -i -e 's/\${HOST_IP}/'$HOST_IP'/g' localrc
+  sed -i -e 's/\${PUBLIC_SERVICE_HOST}/'$PUBLIC_IP'/g' localrc
   sed -i -e 's/\${FLOATING_RANGE}/'$FLOATING_RANGE'/g' localrc
   sed -i -e 's/\${PASSWORD}/'$PASSWORD'/g' localrc
   sed -i -e 's/\${Q_PLUGIN}/'$Q_PLUGIN'/g' localrc

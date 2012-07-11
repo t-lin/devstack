@@ -317,6 +317,9 @@ fi
 # Allow the use of an alternate hostname (such as localhost/127.0.0.1) for service endpoints.
 SERVICE_HOST=${SERVICE_HOST:-$HOST_IP}
 
+# Allow the use of an alternate public hostname for service endpoints.
+PUBLIC_SERVICE_HOST=${PUBLIC_SERVICE_HOST:-$SERVICE_HOST}
+
 # Configure services to use syslog instead of writing to individual log files
 SYSLOG=`trueorfalse False $SYSLOG`
 SYSLOG_HOST=${SYSLOG_HOST:-$HOST_IP}
@@ -1981,7 +1984,7 @@ if is_service_enabled key; then
         cp -p $FILES/default_catalog.templates $KEYSTONE_CATALOG
         # Add swift endpoints to service catalog if swift is enabled
         if is_service_enabled swift; then
-            echo "catalog.RegionOne.object_store.publicURL = http://%SERVICE_HOST%:8080/v1/AUTH_\$(tenant_id)s" >> $KEYSTONE_CATALOG
+            echo "catalog.RegionOne.object_store.publicURL = http://%PUBLIC_SERVICE_HOST%:8080/v1/AUTH_\$(tenant_id)s" >> $KEYSTONE_CATALOG
             echo "catalog.RegionOne.object_store.adminURL = http://%SERVICE_HOST%:8080/" >> $KEYSTONE_CATALOG
             echo "catalog.RegionOne.object_store.internalURL = http://%SERVICE_HOST%:8080/v1/AUTH_\$(tenant_id)s" >> $KEYSTONE_CATALOG
             echo "catalog.RegionOne.object_store.name = Swift Service" >> $KEYSTONE_CATALOG
@@ -1989,7 +1992,7 @@ if is_service_enabled key; then
 
         # Add quantum endpoints to service catalog if quantum is enabled
         if is_service_enabled quantum; then
-            echo "catalog.RegionOne.network.publicURL = http://%SERVICE_HOST%:9696/" >> $KEYSTONE_CATALOG
+            echo "catalog.RegionOne.network.publicURL = http://%PUBLIC_SERVICE_HOST%:9696/" >> $KEYSTONE_CATALOG
             echo "catalog.RegionOne.network.adminURL = http://%SERVICE_HOST%:9696/" >> $KEYSTONE_CATALOG
             echo "catalog.RegionOne.network.internalURL = http://%SERVICE_HOST%:9696/" >> $KEYSTONE_CATALOG
             echo "catalog.RegionOne.network.name = Quantum Service" >> $KEYSTONE_CATALOG
@@ -1997,6 +2000,7 @@ if is_service_enabled key; then
 
         sudo sed -e "
             s,%SERVICE_HOST%,$SERVICE_HOST,g;
+            s,%PUBLIC_SERVICE_HOST%,$PUBLIC_SERVICE_HOST,g;
             s,%S3_SERVICE_PORT%,$S3_SERVICE_PORT,g;
         " -i $KEYSTONE_CATALOG
 
