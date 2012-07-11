@@ -30,9 +30,9 @@ RYU_ENABLED_RYU_API_HOST=${RYU_HOST}
 RYU_ENABLED_RYU_OFP_HOST=${RYU_HOST}
 RYU_ENABLED_RYU_API_PORT=8090
 RYU_ENABLED_RYU_REPO=https://github.com/soheilhassasyeganeh/ryu.git
-RYU_ENABLED_RYU_BRANCH=devel/ryu-folsom
+RYU_ENABLED_RYU_BRANCH=demo/savi
 RYU_ENABLED_QUANTUM_REPO=https://github.com/soheilhassasyeganeh/quantum.git
-RYU_ENABLED_QUANTUM_BRANCH=devel/fix-ryu
+RYU_ENABLED_QUANTUM_BRANCH=demo/savi
 
 SERVICE_TOKEN=qweasdzxc
 
