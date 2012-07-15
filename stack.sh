@@ -1806,6 +1806,7 @@ if is_service_enabled n-vol; then
 fi
 add_nova_opt "osapi_compute_extension=nova.api.openstack.compute.contrib.standard_extensions"
 add_nova_opt "my_ip=$HOST_IP"
+add_nova_opt "routing_source_ip=$PUBLIC_SERVICE_HOST"
 add_nova_opt "public_interface=$PUBLIC_INTERFACE"
 add_nova_opt "vlan_interface=$VLAN_INTERFACE"
 add_nova_opt "flat_network_bridge=$FLAT_NETWORK_BRIDGE"
