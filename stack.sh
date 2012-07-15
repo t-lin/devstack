@@ -1819,9 +1819,9 @@ add_nova_opt "instance_name_template=${INSTANCE_NAME_PREFIX}%08x"
 # All nova-compute workers need to know the vnc configuration options
 # These settings don't hurt anything if n-xvnc and n-novnc are disabled
 if is_service_enabled n-cpu; then
-    NOVNCPROXY_URL=${NOVNCPROXY_URL:-"http://$SERVICE_HOST:6080/vnc_auto.html"}
+    NOVNCPROXY_URL=${NOVNCPROXY_URL:-"http://$PUBLIC_SERVICE_HOST:6080/vnc_auto.html"}
     add_nova_opt "novncproxy_base_url=$NOVNCPROXY_URL"
-    XVPVNCPROXY_URL=${XVPVNCPROXY_URL:-"http://$SERVICE_HOST:6081/console"}
+    XVPVNCPROXY_URL=${XVPVNCPROXY_URL:-"http://$PUBLIC_SERVICE_HOST:6081/console"}
     add_nova_opt "xvpvncproxy_base_url=$XVPVNCPROXY_URL"
 fi
 if [ "$VIRT_DRIVER" = 'xenserver' ]; then
