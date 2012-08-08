@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #
-# configure_tempest.sh - Build a tempest configuration file from devstack
+# **configure_tempest.sh**
+
+# Build a tempest configuration file from devstack
 
 echo "**************************************************"
 echo "Configuring Tempest"
@@ -50,6 +52,7 @@ source $TOP_DIR/openrc
 # Where Openstack code lives
 DEST=${DEST:-/opt/stack}
 
+NOVA_SOURCE_DIR=$DEST/nova
 TEMPEST_DIR=$DEST/tempest
 CONFIG_DIR=$TEMPEST_DIR/etc
 TEMPEST_CONF=$CONFIG_DIR/tempest.conf
@@ -64,15 +67,20 @@ fi
 # Glance should already contain images to be used in tempest
 # testing. Here we simply look for images stored in Glance
 # and set the appropriate variables for use in the tempest config
-# We ignore ramdisk and kernel images and set the IMAGE_UUID to
-# the first image returned and set IMAGE_UUID_ALT to the second,
+# We ignore ramdisk and kernel images, look for the default image
+# DEFAULT_IMAGE_NAME. If not found, we set the IMAGE_UUID to the
+# first image returned and set IMAGE_UUID_ALT to the second,
 # if there is more than one returned...
 # ... Also ensure we only take active images, so we don't get snapshots in process
 IMAGE_LINES=`glance image-list`
 IFS="$(echo -e "\n\r")"
 IMAGES=""
 for line in $IMAGE_LINES; do
-    IMAGES="$IMAGES `echo $line | grep -v "^\(ID\|+--\)" | grep -v "\(aki\|ari\)" | grep 'active' | cut -d' ' -f2`"
+    if [ -z $DEFAULT_IMAGE_NAME ]; then
+        IMAGES="$IMAGES `echo $line | grep -v "^\(ID\|+--\)" | grep -v "\(aki\|ari\)" | grep 'active' | cut -d' ' -f2`"
+    else
+        IMAGES="$IMAGES `echo $line | grep -v "^\(ID\|+--\)" | grep -v "\(aki\|ari\)" | grep 'active' | grep "$DEFAULT_IMAGE_NAME" | cut -d' ' -f2`"
+    fi
 done
 # Create array of image UUIDs...
 IFS=" "
@@ -93,9 +101,13 @@ fi
 # copy every time, because the image UUIDS are going to change
 cp $TEMPEST_CONF.tpl $TEMPEST_CONF
 
-ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-ADMIN_PASSWORD=${ADMIN_PASSWORD:-secrete}
-ADMIN_TENANT_NAME=${ADMIN_TENANT:-admin}
+COMPUTE_ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+COMPUTE_ADMIN_PASSWORD=${ADMIN_PASSWORD:-secrete}
+COMPUTE_ADMIN_TENANT_NAME=${ADMIN_TENANT:-admin}
+
+IDENTITY_ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+IDENTITY_ADMIN_PASSWORD=${ADMIN_PASSWORD:-secrete}
+IDENTITY_ADMIN_TENANT_NAME=${ADMIN_TENANT:-admin}
 
 IDENTITY_USE_SSL=${IDENTITY_USE_SSL:-False}
 IDENTITY_HOST=${IDENTITY_HOST:-127.0.0.1}
@@ -105,6 +117,7 @@ IDENTITY_API_VERSION="v2.0" # Note: need v for now...
 # from the Tempest configuration file entirely...
 IDENTITY_PATH=${IDENTITY_PATH:-tokens}
 IDENTITY_STRATEGY=${IDENTITY_STRATEGY:-keystone}
+IDENTITY_CATALOG_TYPE=identity
 
 # We use regular, non-admin users in Tempest for the USERNAME
 # substitutions and use ADMIN_USERNAME et al for the admin stuff.
@@ -119,22 +132,69 @@ ALT_USERNAME=${ALT_USERNAME:-alt_demo}
 ALT_TENANT_NAME=${ALT_TENANT_NAME:-alt_demo}
 ALT_PASSWORD=$OS_PASSWORD
 
-# TODO(jaypipes): Support configurable flavor refs here...
-FLAVOR_REF=1
-FLAVOR_REF_ALT=2
+# Check Nova for existing flavors and, if set, look for the
+# DEFAULT_INSTANCE_TYPE and use that. Otherwise, just use the first flavor.
+FLAVOR_LINES=`nova flavor-list`
+IFS="$(echo -e "\n\r")"
+FLAVORS=""
+for line in $FLAVOR_LINES; do
+    if [ -z $DEFAULT_INSTANCE_TYPE ]; then
+        FLAVORS="$FLAVORS `echo $line | grep -v "^\(ID\|+--\)" | cut -d' ' -f2`"
+    else
+        FLAVORS="$FLAVORS `echo $line | grep -v "^\(ID\|+--\)" | grep "$DEFAULT_INSTANCE_TYPE" | cut -d' ' -f2`"
+    fi
+done
+IFS=" "
+FLAVORS=($FLAVORS)
+NUM_FLAVORS=${#FLAVORS[*]}
+echo "Found $NUM_FLAVORS flavors"
+if [[ $NUM_FLAVORS -eq 0 ]]; then
+    echo "Found no valid flavors to use!"
+    exit 1
+fi
+FLAVOR_REF=${FLAVORS[0]}
+FLAVOR_REF_ALT=$FLAVOR_REF
+if [[ $NUM_FLAVORS -gt 1 ]]; then
+    FLAVOR_REF_ALT=${FLAVORS[1]}
+fi
 
 # Do any of the following need to be configurable?
 COMPUTE_CATALOG_TYPE=compute
 COMPUTE_CREATE_IMAGE_ENABLED=True
-COMPUTE_RESIZE_AVAILABLE=False  # not supported with QEMU...
+COMPUTE_ALLOW_TENANT_ISOLATION=True
+COMPUTE_RESIZE_AVAILABLE=False
+COMPUTE_CHANGE_PASSWORD_AVAILABLE=False  # not supported with QEMU...
 COMPUTE_LOG_LEVEL=ERROR
-BUILD_INTERVAL=10
-BUILD_TIMEOUT=600
+BUILD_INTERVAL=3
+BUILD_TIMEOUT=400
+RUN_SSH=True
+# Check for DEFAULT_INSTANCE_USER and try to connect with that account
+SSH_USER=${DEFAULT_INSTANCE_USER:-$OS_USERNAME}
+NETWORK_FOR_SSH=private
+IP_VERSION_FOR_SSH=4
+SSH_TIMEOUT=4
+# Whitebox testing configuration for Compute...
+COMPUTE_WHITEBOX_ENABLED=True
+COMPUTE_SOURCE_DIR=$NOVA_SOURCE_DIR
+COMPUTE_BIN_DIR=/usr/bin/nova
+COMPUTE_CONFIG_PATH=/etc/nova/nova.conf
+# TODO(jaypipes): Create the key file here... right now, no whitebox
+# tests actually use a key.
+COMPUTE_PATH_TO_PRIVATE_KEY=$TEMPEST_DIR/id_rsa
+COMPUTE_DB_URI=mysql://root:$MYSQL_PASSWORD@localhost/nova
 
 # Image test configuration options...
 IMAGE_HOST=${IMAGE_HOST:-127.0.0.1}
 IMAGE_PORT=${IMAGE_PORT:-9292}
-IMAGE_API_VERSION="1"
+IMAGE_API_VERSION=1
+IMAGE_CATALOG_TYPE=image
+
+# Network API test configuration
+NETWORK_CATALOG_TYPE=network
+NETWORK_API_VERSION=2.0
+
+# Volume API test configuration
+VOLUME_CATALOG_TYPE=volume
 
 sed -e "
     s,%IDENTITY_USE_SSL%,$IDENTITY_USE_SSL,g;
@@ -143,6 +203,7 @@ sed -e "
     s,%IDENTITY_API_VERSION%,$IDENTITY_API_VERSION,g;
     s,%IDENTITY_PATH%,$IDENTITY_PATH,g;
     s,%IDENTITY_STRATEGY%,$IDENTITY_STRATEGY,g;
+    s,%IDENTITY_CATALOG_TYPE%,$IDENTITY_CATALOG_TYPE,g;
     s,%USERNAME%,$OS_USERNAME,g;
     s,%PASSWORD%,$OS_PASSWORD,g;
     s,%TENANT_NAME%,$OS_TENANT_NAME,g;
@@ -150,25 +211,41 @@ sed -e "
     s,%ALT_PASSWORD%,$ALT_PASSWORD,g;
     s,%ALT_TENANT_NAME%,$ALT_TENANT_NAME,g;
     s,%COMPUTE_CATALOG_TYPE%,$COMPUTE_CATALOG_TYPE,g;
+    s,%COMPUTE_ALLOW_TENANT_ISOLATION%,$COMPUTE_ALLOW_TENANT_ISOLATION,g;
     s,%COMPUTE_CREATE_IMAGE_ENABLED%,$COMPUTE_CREATE_IMAGE_ENABLED,g;
     s,%COMPUTE_RESIZE_AVAILABLE%,$COMPUTE_RESIZE_AVAILABLE,g;
+    s,%COMPUTE_CHANGE_PASSWORD_AVAILABLE%,$COMPUTE_CHANGE_PASSWORD_AVAILABLE,g;
+    s,%COMPUTE_WHITEBOX_ENABLED%,$COMPUTE_WHITEBOX_ENABLED,g;
     s,%COMPUTE_LOG_LEVEL%,$COMPUTE_LOG_LEVEL,g;
     s,%BUILD_INTERVAL%,$BUILD_INTERVAL,g;
     s,%BUILD_TIMEOUT%,$BUILD_TIMEOUT,g;
+    s,%RUN_SSH%,$RUN_SSH,g;
+    s,%SSH_USER%,$SSH_USER,g;
+    s,%NETWORK_FOR_SSH%,$NETWORK_FOR_SSH,g;
+    s,%IP_VERSION_FOR_SSH%,$IP_VERSION_FOR_SSH,g;
+    s,%SSH_TIMEOUT%,$SSH_TIMEOUT,g;
     s,%IMAGE_ID%,$IMAGE_UUID,g;
     s,%IMAGE_ID_ALT%,$IMAGE_UUID_ALT,g;
     s,%FLAVOR_REF%,$FLAVOR_REF,g;
     s,%FLAVOR_REF_ALT%,$FLAVOR_REF_ALT,g;
+    s,%COMPUTE_CONFIG_PATH%,$COMPUTE_CONFIG_PATH,g;
+    s,%COMPUTE_SOURCE_DIR%,$COMPUTE_SOURCE_DIR,g;
+    s,%COMPUTE_BIN_DIR%,$COMPUTE_BIN_DIR,g;
+    s,%COMPUTE_PATH_TO_PRIVATE_KEY%,$COMPUTE_PATH_TO_PRIVATE_KEY,g;
+    s,%COMPUTE_DB_URI%,$COMPUTE_DB_URI,g;
     s,%IMAGE_HOST%,$IMAGE_HOST,g;
     s,%IMAGE_PORT%,$IMAGE_PORT,g;
     s,%IMAGE_API_VERSION%,$IMAGE_API_VERSION,g;
-    s,%COMPUTE_ADMIN_USERNAME%,$ADMIN_USERNAME,g;
-    s,%COMPUTE_ADMIN_PASSWORD%,$ADMIN_PASSWORD,g;
-    s,%COMPUTE_ADMIN_TENANT_NAME%,$ADMIN_TENANT_NAME,g;
-    s,%IDENTITY_ADMIN_USERNAME%,$ADMIN_USERNAME,g;
-    s,%IDENTITY_ADMIN_PASSWORD%,$ADMIN_PASSWORD,g;
-    s,%IDENTITY_ADMIN_TENANT_NAME%,$ADMIN_TENANT_NAME,g;
-    s,%COMPUTE_ALLOW_TENANT_ISOLATION%,true,g;
+    s,%IMAGE_CATALOG_TYPE%,$IMAGE_CATALOG_TYPE,g;
+    s,%COMPUTE_ADMIN_USERNAME%,$COMPUTE_ADMIN_USERNAME,g;
+    s,%COMPUTE_ADMIN_PASSWORD%,$COMPUTE_ADMIN_PASSWORD,g;
+    s,%COMPUTE_ADMIN_TENANT_NAME%,$COMPUTE_ADMIN_TENANT_NAME,g;
+    s,%IDENTITY_ADMIN_USERNAME%,$IDENTITY_ADMIN_USERNAME,g;
+    s,%IDENTITY_ADMIN_PASSWORD%,$IDENTITY_ADMIN_PASSWORD,g;
+    s,%IDENTITY_ADMIN_TENANT_NAME%,$IDENTITY_ADMIN_TENANT_NAME,g;
+    s,%NETWORK_CATALOG_TYPE%,$NETWORK_CATALOG_TYPE,g;
+    s,%NETWORK_API_VERSION%,$NETWORK_API_VERSION,g;
+    s,%VOLUME_CATALOG_TYPE%,$VOLUME_CATALOG_TYPE,g;
 " -i $TEMPEST_CONF
 
 echo "Created tempest configuration file:"

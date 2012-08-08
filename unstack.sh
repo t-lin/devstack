@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-#
+
+# **unstack.sh**
+
 # Stops that which is started by ``stack.sh`` (mostly)
 # mysql and rabbit are left running as OpenStack code refreshes
 # do not require them to be restarted.
@@ -60,4 +62,9 @@ if [[ -n "$UNSTACK_ALL" ]]; then
     if is_service_enabled mysql; then
         stop_service mysql
     fi
+fi
+
+# Quantum dhcp agent runs dnsmasq
+if is_service_enabled q-dhcp; then
+    sudo kill -9 $(ps aux | awk '/[d]nsmasq.+interface=tap/ { print $2 }')
 fi

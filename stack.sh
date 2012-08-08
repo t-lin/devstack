@@ -26,19 +26,8 @@ source $TOP_DIR/functions
 
 # Determine what system we are running on.  This provides ``os_VENDOR``,
 # ``os_RELEASE``, ``os_UPDATE``, ``os_PACKAGE``, ``os_CODENAME``
-GetOSVersion
-
-# Translate the OS version values into common nomenclature
-if [[ "$os_VENDOR" =~ (Ubuntu) ]]; then
-    # 'Everyone' refers to Ubuntu releases by the code name adjective
-    DISTRO=$os_CODENAME
-elif [[ "$os_VENDOR" =~ (Fedora) ]]; then
-    # For Fedora, just use 'f' and the release
-    DISTRO="f$os_RELEASE"
-else
-    # Catch-all for now is Vendor + Release + Update
-    DISTRO="$os_VENDOR-$os_RELEASE.$os_UPDATE"
-fi
+# and ``DISTRO``
+GetDistro
 
 
 # Settings
@@ -89,20 +78,15 @@ DEST=${DEST:-/opt/stack}
 # Sanity Check
 # ============
 
-# We are looking for services with a - at the beginning to force
-# excluding those services. For example if you want to install all the default
-# services but not nova-volume (n-vol) you can have this set in your localrc :
-# ENABLED_SERVICES+=",-n-vol"
-for service in ${ENABLED_SERVICES//,/ }; do
-    if [[ ${service} == -* ]]; then
-        ENABLED_SERVICES=$(echo ${ENABLED_SERVICES}|sed -r "s/(,)?(-)?${service#-}(,)?/,/g")
-    fi
-done
+# Remove services which were negated in ENABLED_SERVICES
+# using the "-" prefix (e.g., "-n-vol") instead of
+# calling disable_service().
+disable_negated_services
 
 # Warn users who aren't on an explicitly supported distro, but allow them to
 # override check and attempt installation with ``FORCE=yes ./stack``
-if [[ ! ${DISTRO} =~ (oneiric|precise|quantal|f16) ]]; then
-    echo "WARNING: this script has been tested on oneiric, precise and f16"
+if [[ ! ${DISTRO} =~ (oneiric|precise|quantal|f16|f17) ]]; then
+    echo "WARNING: this script has not been tested on $DISTRO"
     if [[ "$FORCE" != "yes" ]]; then
         echo "If you wish to run this script anyway run with FORCE=yes"
         exit 1
@@ -171,9 +155,13 @@ if [[ $EUID -eq 0 ]]; then
     else
         rpm -qa | grep sudo || install_package sudo
     fi
+    if ! getent group stack >/dev/null; then
+        echo "Creating a group called stack"
+        groupadd stack
+    fi
     if ! getent passwd stack >/dev/null; then
         echo "Creating a user called stack"
-        useradd -U -s /bin/bash -d $DEST -m stack
+        useradd -g stack -s /bin/bash -d $DEST -m stack
     fi
 
     echo "Giving stack user passwordless sudo priviledges"
@@ -209,6 +197,9 @@ else
     # Set up devstack sudoers
     TEMPFILE=`mktemp`
     echo "`whoami` ALL=(root) NOPASSWD:ALL" >$TEMPFILE
+    # Some binaries might be under /sbin or /usr/sbin, so make sure sudo will
+    # see them by forcing PATH
+    echo "Defaults:`whoami` secure_path=/sbin:/usr/sbin:/usr/bin:/bin:/usr/local/sbin:/usr/local/bin" >> $TEMPFILE
     chmod 0440 $TEMPFILE
     sudo chown root:root $TEMPFILE
     sudo mv $TEMPFILE /etc/sudoers.d/50_stack_sh
@@ -245,7 +236,6 @@ sudo chown `whoami` $DATA_DIR
 # Get project function libraries
 source $TOP_DIR/lib/cinder
 
-
 # Set the destination directories for openstack projects
 NOVA_DIR=$DEST/nova
 HORIZON_DIR=$DEST/horizon
@@ -271,6 +261,13 @@ Q_PLUGIN=${Q_PLUGIN:-openvswitch}
 Q_PORT=${Q_PORT:-9696}
 # Default Quantum Host
 Q_HOST=${Q_HOST:-localhost}
+# Which Quantum API nova should use
+NOVA_USE_QUANTUM_API=${NOVA_USE_QUANTUM_API:-v1}
+# Default admin username
+Q_ADMIN_USERNAME=${Q_ADMIN_USERNAME:-quantum}
+# Default auth strategy
+Q_AUTH_STRATEGY=${Q_AUTH_STRATEGY:-keystone}
+
 
 # Default Melange Port
 M_PORT=${M_PORT:-9898}
@@ -292,12 +289,6 @@ RYU_OFP_PORT=${RYU_OFP_PORT:-6633}
 VOLUME_GROUP=${VOLUME_GROUP:-stack-volumes}
 VOLUME_NAME_PREFIX=${VOLUME_NAME_PREFIX:-volume-}
 INSTANCE_NAME_PREFIX=${INSTANCE_NAME_PREFIX:-instance-}
-
-# Nova hypervisor configuration.  We default to libvirt with **kvm** but will
-# drop back to **qemu** if we are unable to load the kvm module.  ``stack.sh`` can
-# also install an **LXC** based system.
-VIRT_DRIVER=${VIRT_DRIVER:-libvirt}
-LIBVIRT_TYPE=${LIBVIRT_TYPE:-kvm}
 
 # Nova supports pluggable schedulers.  ``FilterScheduler`` should work in most
 # cases.
@@ -394,6 +385,7 @@ PUBLIC_INTERFACE=${PUBLIC_INTERFACE:-$PUBLIC_INTERFACE_DEFAULT}
 PUBLIC_INTERFACE=${PUBLIC_INTERFACE:-br100}
 FIXED_RANGE=${FIXED_RANGE:-10.0.0.0/24}
 FIXED_NETWORK_SIZE=${FIXED_NETWORK_SIZE:-256}
+NETWORK_GATEWAY=${NETWORK_GATEWAY:-10.0.0.1}
 FLOATING_RANGE=${FLOATING_RANGE:-172.24.4.224/28}
 NET_MAN=${NET_MAN:-FlatDHCPManager}
 EC2_DMZ_HOST=${EC2_DMZ_HOST:-$SERVICE_HOST}
@@ -476,9 +468,9 @@ fi
 GLANCE_HOSTPORT=${GLANCE_HOSTPORT:-$SERVICE_HOST:9292}
 
 
-# SWIFT
+# Swift
 # -----
-# TODO: implement glance support
+
 # TODO: add logging to different location.
 
 # By default the location of swift drives and objects is located inside
@@ -490,7 +482,7 @@ SWIFT_DATA_DIR=${SWIFT_DATA_DIR:-${DEST}/data/swift}
 # directory, change SWIFT_CONFIG_DIR if you want to adjust that.
 SWIFT_CONFIG_DIR=${SWIFT_CONFIG_DIR:-/etc/swift}
 
-# devstack will create a loop-back disk formatted as XFS to store the
+# DevStack will create a loop-back disk formatted as XFS to store the
 # swift data. By default the disk size is 1 gigabyte. The variable
 # SWIFT_LOOPBACK_DISK_SIZE specified in bytes allow you to change
 # that.
@@ -513,9 +505,11 @@ SWIFT_PARTITION_POWER_SIZE=${SWIFT_PARTITION_POWER_SIZE:-9}
 SWIFT_REPLICAS=${SWIFT_REPLICAS:-3}
 
 if is_service_enabled swift; then
-    # If we are using swift, we can default the s3 port to swift instead
+    # If we are using swift3, we can default the s3 port to swift instead
     # of nova-objectstore
-    S3_SERVICE_PORT=${S3_SERVICE_PORT:-8080}
+    if is_service_enabled swift3;then
+        S3_SERVICE_PORT=${S3_SERVICE_PORT:-8080}
+    fi
     # We only ask for Swift Hash if we have enabled swift service.
     # SWIFT_HASH is a random unique string for a swift cluster that
     # can never change.
@@ -524,6 +518,7 @@ fi
 
 # Set default port for nova-objectstore
 S3_SERVICE_PORT=${S3_SERVICE_PORT:-3333}
+
 
 # Keystone
 # --------
@@ -622,10 +617,10 @@ set -o xtrace
 
 # Install Packages
 # ================
-#
+
 # Openstack uses a fair number of other projects.
 
-# install package requirements
+# Install package requirements
 if [[ "$os_PACKAGE" = "deb" ]]; then
     apt_get update
     install_package $(get_packages $FILES/apts)
@@ -633,12 +628,137 @@ else
     install_package $(get_packages $FILES/rpms)
 fi
 
-# install python requirements
+if [[ $SYSLOG != "False" ]]; then
+    install_package rsyslog-relp
+fi
+
+if is_service_enabled rabbit; then
+    # Install rabbitmq-server
+    # the temp file is necessary due to LP: #878600
+    tfile=$(mktemp)
+    install_package rabbitmq-server > "$tfile" 2>&1
+    cat "$tfile"
+    rm -f "$tfile"
+elif is_service_enabled qpid; then
+    if [[ "$os_PACKAGE" = "rpm" ]]; then
+        install_package qpid-cpp-server
+    else
+        install_package qpidd
+    fi
+fi
+
+if is_service_enabled mysql; then
+
+    if [[ "$os_PACKAGE" = "deb" ]]; then
+        # Seed configuration with mysql password so that apt-get install doesn't
+        # prompt us for a password upon install.
+        cat <<MYSQL_PRESEED | sudo debconf-set-selections
+mysql-server-5.1 mysql-server/root_password password $MYSQL_PASSWORD
+mysql-server-5.1 mysql-server/root_password_again password $MYSQL_PASSWORD
+mysql-server-5.1 mysql-server/start_on_boot boolean true
+MYSQL_PRESEED
+    fi
+
+    # while ``.my.cnf`` is not needed for openstack to function, it is useful
+    # as it allows you to access the mysql databases via ``mysql nova`` instead
+    # of having to specify the username/password each time.
+    if [[ ! -e $HOME/.my.cnf ]]; then
+        cat <<EOF >$HOME/.my.cnf
+[client]
+user=$MYSQL_USER
+password=$MYSQL_PASSWORD
+host=$MYSQL_HOST
+EOF
+        chmod 0600 $HOME/.my.cnf
+    fi
+    # Install mysql-server
+    install_package mysql-server
+fi
+
+if is_service_enabled quantum; then
+    if [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
+        # Install deps
+        # FIXME add to files/apts/quantum, but don't install if not needed!
+        install_package python-configobj
+    fi
+fi
+
+if is_service_enabled horizon; then
+    if [[ "$os_PACKAGE" = "deb" ]]; then
+        # Install apache2, which is NOPRIME'd
+        install_package apache2 libapache2-mod-wsgi
+    else
+        sudo rm -f /etc/httpd/conf.d/000-*
+        install_package httpd mod_wsgi
+    fi
+fi
+
+if is_service_enabled q-agt; then
+    if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
+        # Install deps
+        # FIXME add to files/apts/quantum, but don't install if not needed!
+        if [[ "$os_PACKAGE" = "deb" ]]; then
+            kernel_version=`cat /proc/version | cut -d " " -f3`
+            install_package make fakeroot dkms openvswitch-switch openvswitch-datapath-dkms linux-headers-$kernel_version
+        else
+            ### FIXME(dtroyer): Find RPMs for OpenVSwitch
+            echo "OpenVSwitch packages need to be located"
+        fi
+    elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
+       install_package bridge-utils
+    fi
+fi
+
+if is_service_enabled n-cpu; then
+
+    # Virtualization Configuration
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    if [[ "$os_PACKAGE" = "deb" ]]; then
+        LIBVIRT_PKG_NAME=libvirt-bin
+    else
+        LIBVIRT_PKG_NAME=libvirt
+    fi
+    install_package $LIBVIRT_PKG_NAME
+    # Install and configure **LXC** if specified.  LXC is another approach to
+    # splitting a system into many smaller parts.  LXC uses cgroups and chroot
+    # to simulate multiple systems.
+    if [[ "$LIBVIRT_TYPE" == "lxc" ]]; then
+        if [[ "$os_PACKAGE" = "deb" ]]; then
+            if [[ "$DISTRO" > natty ]]; then
+                install_package cgroup-lite
+            fi
+        else
+            ### FIXME(dtroyer): figure this out
+            echo "RPM-based cgroup not implemented yet"
+            yum_install libcgroup-tools
+        fi
+    fi
+fi
+
+if is_service_enabled swift; then
+    # Install memcached for swift.
+    install_package memcached
+fi
+
+TRACK_DEPENDS=${TRACK_DEPENDS:-False}
+
+# Install python packages into a virtualenv so that we can track them
+if [[ $TRACK_DEPENDS = True ]] ; then
+    install_package python-virtualenv
+
+    rm -rf $DEST/.venv
+    virtualenv --system-site-packages $DEST/.venv
+    source $DEST/.venv/bin/activate
+    $DEST/.venv/bin/pip freeze > $DEST/requires-pre-pip
+fi
+
+# Install python requirements
 pip_install $(get_packages $FILES/pips | sort -u)
 
-# compute service
+# Check out OpenStack sources
 git_clone $NOVA_REPO $NOVA_DIR $NOVA_BRANCH
-# python client library to nova that horizon (and others) use
+
+# Check out the client libs that are used most
 git_clone $KEYSTONECLIENT_REPO $KEYSTONECLIENT_DIR $KEYSTONECLIENT_BRANCH
 git_clone $NOVACLIENT_REPO $NOVACLIENT_DIR $NOVACLIENT_BRANCH
 git_clone $OPENSTACKCLIENT_REPO $OPENSTACKCLIENT_DIR $OPENSTACKCLIENT_BRANCH
@@ -654,8 +774,10 @@ if is_service_enabled swift; then
     git_clone $SWIFT_REPO $SWIFT_DIR $SWIFT_BRANCH
     # storage service client and and Library
     git_clone $SWIFTCLIENT_REPO $SWIFTCLIENT_DIR $SWIFTCLIENT_BRANCH
-    # swift3 middleware to provide S3 emulation to Swift
-    git_clone $SWIFT3_REPO $SWIFT3_DIR $SWIFT3_BRANCH
+    if is_service_enabled swift3; then
+        # swift3 middleware to provide S3 emulation to Swift
+        git_clone $SWIFT3_REPO $SWIFT3_DIR $SWIFT3_BRANCH
+    fi
 fi
 if is_service_enabled g-api n-api; then
     # image catalog service
@@ -696,7 +818,7 @@ fi
 # Initialization
 # ==============
 
-# setup our checkouts so they are installed into python path
+# Set up our checkouts so they are installed into python path
 # allowing ``import nova`` or ``import glance.client``
 setup_develop $KEYSTONECLIENT_DIR
 setup_develop $NOVACLIENT_DIR
@@ -707,6 +829,8 @@ fi
 if is_service_enabled swift; then
     setup_develop $SWIFT_DIR
     setup_develop $SWIFTCLIENT_DIR
+fi
+if is_service_enabled swift3; then
     setup_develop $SWIFT3_DIR
 fi
 if is_service_enabled g-api n-api; then
@@ -737,12 +861,19 @@ if is_service_enabled ryu; then
     cd $RYU_DIR; sudo python setup.py develop
 fi
 
+if [[ $TRACK_DEPENDS = True ]] ; then
+    $DEST/.venv/bin/pip freeze > $DEST/requires-post-pip
+    if ! diff -Nru $DEST/requires-pre-pip $DEST/requires-post-pip > $DEST/requires.diff ; then
+        cat $DEST/requires.diff
+    fi
+    echo "Ran stack.sh in depend tracking mode, bailing out now"
+    exit 0
+fi
 
 # Syslog
 # ------
 
 if [[ $SYSLOG != "False" ]]; then
-    install_package rsyslog-relp
     if [[ "$SYSLOG_HOST" = "$HOST_IP" ]]; then
         # Configure the master host to receive
         cat <<EOF >/tmp/90-stack-m.conf
@@ -765,12 +896,7 @@ fi
 # --------------
 
 if is_service_enabled rabbit; then
-    # Install and start rabbitmq-server
-    # the temp file is necessary due to LP: #878600
-    tfile=$(mktemp)
-    install_package rabbitmq-server > "$tfile" 2>&1
-    cat "$tfile"
-    rm -f "$tfile"
+    # Start rabbitmq-server
     if [[ "$os_PACKAGE" = "rpm" ]]; then
         # RPM doesn't start the service
         restart_service rabbitmq-server
@@ -778,45 +904,17 @@ if is_service_enabled rabbit; then
     # change the rabbit password since the default is "guest"
     sudo rabbitmqctl change_password guest $RABBIT_PASSWORD
 elif is_service_enabled qpid; then
-    if [[ "$os_PACKAGE" = "rpm" ]]; then
-        install_package qpid-cpp-server
-        restart_service qpidd
-    else
-        install_package qpidd
-    fi
+    restart_service qpidd
 fi
 
 
 # Mysql
 # -----
 
+
 if is_service_enabled mysql; then
 
-    if [[ "$os_PACKAGE" = "deb" ]]; then
-        # Seed configuration with mysql password so that apt-get install doesn't
-        # prompt us for a password upon install.
-        cat <<MYSQL_PRESEED | sudo debconf-set-selections
-mysql-server-5.1 mysql-server/root_password password $MYSQL_PASSWORD
-mysql-server-5.1 mysql-server/root_password_again password $MYSQL_PASSWORD
-mysql-server-5.1 mysql-server/start_on_boot boolean true
-MYSQL_PRESEED
-    fi
-
-    # while ``.my.cnf`` is not needed for openstack to function, it is useful
-    # as it allows you to access the mysql databases via ``mysql nova`` instead
-    # of having to specify the username/password each time.
-    if [[ ! -e $HOME/.my.cnf ]]; then
-        cat <<EOF >$HOME/.my.cnf
-[client]
-user=$MYSQL_USER
-password=$MYSQL_PASSWORD
-host=$MYSQL_HOST
-EOF
-        chmod 0600 $HOME/.my.cnf
-    fi
-
-    # Install and start mysql-server
-    install_package mysql-server
+    #start mysql-server
     if [[ "$os_PACKAGE" = "rpm" ]]; then
         # RPM doesn't start the service
         start_service mysqld
@@ -895,16 +993,17 @@ function screen_it {
     fi
 }
 
-# create a new named screen to run processes in
+# Create a new named screen to run processes in
 screen -d -m -S stack -t stack -s /bin/bash
 sleep 1
-# set a reasonable statusbar
+# Set a reasonable statusbar
 screen -r stack -X hardstatus alwayslastline "$SCREEN_HARDSTATUS"
+
 
 # Horizon
 # -------
 
-# Setup the django horizon application to serve via apache/wsgi
+# Set up the django horizon application to serve via apache/wsgi
 
 if is_service_enabled horizon; then
 
@@ -918,17 +1017,15 @@ if is_service_enabled horizon; then
     # Initialize the horizon database (it stores sessions and notices shown to
     # users).  The user system is external (keystone).
     cd $HORIZON_DIR
-    python manage.py syncdb
+    python manage.py syncdb --noinput
     cd $TOP_DIR
 
-    # create an empty directory that apache uses as docroot
+    # Create an empty directory that apache uses as docroot
     sudo mkdir -p $HORIZON_DIR/.blackhole
 
     if [[ "$os_PACKAGE" = "deb" ]]; then
-        # Install apache2, which is NOPRIME'd
         APACHE_NAME=apache2
         APACHE_CONF=sites-available/horizon
-        install_package apache2 libapache2-mod-wsgi
         # Clean up the old config name
         sudo rm -f /etc/apache2/sites-enabled/000-default
         # Be a good citizen and use the distro tools here
@@ -938,8 +1035,6 @@ if is_service_enabled horizon; then
         # Install httpd, which is NOPRIME'd
         APACHE_NAME=httpd
         APACHE_CONF=conf.d/horizon.conf
-        sudo rm -f /etc/httpd/conf.d/000-*
-        install_package httpd mod_wsgi
         sudo sed '/^Listen/s/^.*$/Listen 0.0.0.0:80/' -i /etc/httpd/conf/httpd.conf
     fi
     ## Configure apache to run horizon
@@ -1028,8 +1123,10 @@ if is_service_enabled g-reg; then
 
 fi
 
-# Quantum (for controller or agent nodes)
+
+# Quantum
 # -------
+
 if is_service_enabled quantum; then
     # Put config files in /etc/quantum for everyone to find
     if [[ ! -d /etc/quantum ]]; then
@@ -1041,11 +1138,12 @@ if is_service_enabled quantum; then
         Q_PLUGIN_CONF_PATH=etc/quantum/plugins/openvswitch
         Q_PLUGIN_CONF_FILENAME=ovs_quantum_plugin.ini
         Q_DB_NAME="ovs_quantum"
-        Q_PLUGIN_CLASS="quantum.plugins.openvswitch.ovs_quantum_plugin.OVSQuantumPlugin"
+        if [[ "$NOVA_USE_QUANTUM_API" = "v1" ]]; then
+            Q_PLUGIN_CLASS="quantum.plugins.openvswitch.ovs_quantum_plugin.OVSQuantumPlugin"
+        elif [[ "$NOVA_USE_QUANTUM_API" = "v2" ]]; then
+            Q_PLUGIN_CLASS="quantum.plugins.openvswitch.ovs_quantum_plugin.OVSQuantumPluginV2"
+        fi
     elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
-        # Install deps
-        # FIXME add to files/apts/quantum, but don't install if not needed!
-        install_package python-configobj
         Q_PLUGIN_CONF_PATH=etc/quantum/plugins/linuxbridge
         Q_PLUGIN_CONF_FILENAME=linuxbridge_conf.ini
         Q_DB_NAME="quantum_linux_bridge"
@@ -1057,17 +1155,21 @@ if is_service_enabled quantum; then
         Q_PLUGIN_CONF_FILENAME=ryu.ini
         Q_DB_NAME="ovs_quantum"
         Q_PLUGIN_CLASS="quantum.plugins.ryu.ryu_quantum_plugin.RyuQuantumPlugin"
+        if [[ "$NOVA_USE_QUANTUM_API" = "v1" ]]; then
+            Q_PLUGIN_CLASS="quantum.plugins.linuxbridge.LinuxBridgePlugin.LinuxBridgePlugin"
+        elif [[ "$NOVA_USE_QUANTUM_API" = "v2" ]]; then
+            Q_PLUGIN_CLASS="quantum.plugins.linuxbridge.lb_quantum_plugin.LinuxBridgePluginV2"
+        fi
     else
         echo "Unknown Quantum plugin '$Q_PLUGIN'.. exiting"
         exit 1
     fi
 
-    # if needed, move config file from $QUANTUM_DIR/etc/quantum to /etc/quantum
+    # If needed, move config file from $QUANTUM_DIR/etc/quantum to /etc/quantum
     mkdir -p /$Q_PLUGIN_CONF_PATH
     Q_PLUGIN_CONF_FILE=$Q_PLUGIN_CONF_PATH/$Q_PLUGIN_CONF_FILENAME
-    if [[ -e $QUANTUM_DIR/$Q_PLUGIN_CONF_FILE ]]; then
-            sudo mv $QUANTUM_DIR/$Q_PLUGIN_CONF_FILE /$Q_PLUGIN_CONF_FILE
-    fi
+    cp $QUANTUM_DIR/$Q_PLUGIN_CONF_FILE /$Q_PLUGIN_CONF_FILE
+
     sudo sed -i -e "s/^sql_connection =.*$/sql_connection = mysql:\/\/$MYSQL_USER:$MYSQL_PASSWORD@$MYSQL_HOST\/$Q_DB_NAME?charset=utf8/g" /$Q_PLUGIN_CONF_FILE
 
     OVS_ENABLE_TUNNELING=${OVS_ENABLE_TUNNELING:-True}
@@ -1080,6 +1182,12 @@ if is_service_enabled quantum; then
         fi
         sudo sed -i -e "s/.*enable_tunneling = .*$/enable_tunneling = $OVS_ENABLE_TUNNELING/g" /$Q_PLUGIN_CONF_FILE
     fi
+
+    if [[ "$NOVA_USE_QUANTUM_API" = "v1" ]]; then
+        iniset /$Q_PLUGIN_CONF_FILE AGENT target_v2_api False
+    elif [[ "$NOVA_USE_QUANTUM_API" = "v2" ]]; then
+        iniset /$Q_PLUGIN_CONF_FILE AGENT target_v2_api True
+    fi
 fi
 
 # Quantum service (for controller node)
@@ -1088,17 +1196,9 @@ if is_service_enabled q-svc; then
     Q_API_PASTE_FILE=/etc/quantum/api-paste.ini
     Q_POLICY_FILE=/etc/quantum/policy.json
 
-    if [[ -e $QUANTUM_DIR/etc/quantum.conf ]]; then
-      sudo mv $QUANTUM_DIR/etc/quantum.conf $Q_CONF_FILE
-    fi
-
-    if [[ -e $QUANTUM_DIR/etc/api-paste.ini ]]; then
-      sudo mv $QUANTUM_DIR/etc/api-paste.ini $Q_API_PASTE_FILE
-    fi
-
-    if [[ -e $QUANTUM_DIR/etc/policy.json ]]; then
-      sudo mv $QUANTUM_DIR/etc/policy.json $Q_POLICY_FILE
-    fi
+    cp $QUANTUM_DIR/etc/quantum.conf $Q_CONF_FILE
+    cp $QUANTUM_DIR/etc/api-paste.ini $Q_API_PASTE_FILE
+    cp $QUANTUM_DIR/etc/policy.json $Q_POLICY_FILE
 
     if is_service_enabled mysql; then
             mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "DROP DATABASE IF EXISTS $Q_DB_NAME;"
@@ -1131,20 +1231,22 @@ EOF
     # Update either configuration file with plugin
     sudo sed -i -e "s/^core_plugin =.*$/core_plugin = $Q_PLUGIN_CLASS/g" $Q_CONF_FILE
     screen_it q-svc "sleep 15 && cd $QUANTUM_DIR && python $QUANTUM_DIR/bin/quantum-server --config-file $Q_CONF_FILE"
+    iniset $Q_CONF_FILE DEFAULT core_plugin $Q_PLUGIN_CLASS
+
+    iniset $Q_CONF_FILE DEFAULT auth_strategy $Q_AUTH_STRATEGY
+    iniset $Q_API_PASTE_FILE filter:authtoken auth_host $KEYSTONE_SERVICE_HOST
+    iniset $Q_API_PASTE_FILE filter:authtoken auth_port $KEYSTONE_AUTH_PORT
+    iniset $Q_API_PASTE_FILE filter:authtoken auth_protocol $KEYSTONE_SERVICE_PROTOCOL
+    iniset $Q_API_PASTE_FILE filter:authtoken admin_tenant_name $SERVICE_TENANT_NAME
+    iniset $Q_API_PASTE_FILE filter:authtoken admin_user $Q_ADMIN_USERNAME
+    iniset $Q_API_PASTE_FILE filter:authtoken admin_password $SERVICE_PASSWORD
+
+    screen_it q-svc "cd $QUANTUM_DIR && python $QUANTUM_DIR/bin/quantum-server --config-file $Q_CONF_FILE --config-file /$Q_PLUGIN_CONF_FILE"
 fi
 
 # Quantum agent (for compute nodes)
 if is_service_enabled q-agt; then
     if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
-        # Install deps
-        # FIXME add to files/apts/quantum, but don't install if not needed!
-        if [[ "$os_PACKAGE" = "deb" ]]; then
-            kernel_version=`cat /proc/version | cut -d " " -f3`
-            install_package make fakeroot dkms openvswitch-switch openvswitch-datapath-dkms linux-headers-$kernel_version
-        else
-            ### FIXME(dtroyer): Find RPMs for OpenVSwitch
-            echo "OpenVSwitch packages need to be located"
-        fi
         # Set up integration bridge
         OVS_BRIDGE=${OVS_BRIDGE:-br-int}
         for PORT in `sudo ovs-vsctl --no-wait list-ports $OVS_BRIDGE`; do
@@ -1157,12 +1259,11 @@ if is_service_enabled q-agt; then
         sudo ovs-vsctl --no-wait add-port $OVS_BRIDGE $Q_INTERFACE
         sudo ifconfig $Q_INTERFACE up
 
-        sudo sed -i -e "s/.*local-ip = .*/local-ip = $HOST_IP/g" /$Q_PLUGIN_CONF_FILE
-        AGENT_BINARY=$QUANTUM_DIR/quantum/plugins/openvswitch/agent/ovs_quantum_agent.py
+        sudo sed -i -e "s/.*local_ip = .*/local_ip = $HOST_IP/g" /$Q_PLUGIN_CONF_FILE
+        AGENT_BINARY="$QUANTUM_DIR/quantum/plugins/openvswitch/agent/ovs_quantum_agent.py"
     elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
        # Start up the quantum <-> linuxbridge agent
-       install_package bridge-utils
-        #set the default network interface
+       # set the default network interface
        QUANTUM_LB_PRIVATE_INTERFACE=${QUANTUM_LB_PRIVATE_INTERFACE:-$GUEST_INTERFACE_DEFAULT}
        sudo sed -i -e "s/^physical_interface = .*$/physical_interface = $QUANTUM_LB_PRIVATE_INTERFACE/g" /$Q_PLUGIN_CONF_FILE
        AGENT_BINARY=$QUANTUM_DIR/quantum/plugins/linuxbridge/agent/linuxbridge_quantum_agent.py
@@ -1199,6 +1300,37 @@ if is_service_enabled q-agt; then
     screen_it q-agt "sleep 30; sudo python $AGENT_BINARY /$Q_PLUGIN_CONF_FILE -v"
 fi
 
+# Quantum DHCP
+if is_service_enabled q-dhcp; then
+    AGENT_DHCP_BINARY="$QUANTUM_DIR/bin/quantum-dhcp-agent"
+
+    Q_DHCP_CONF_FILE=/etc/quantum/dhcp_agent.ini
+
+    if [[ -e $QUANTUM_DIR/etc/dhcp_agent.ini ]]; then
+      sudo cp $QUANTUM_DIR/etc/dhcp_agent.ini $Q_DHCP_CONF_FILE
+    fi
+
+    # Set verbose
+    iniset $Q_DHCP_CONF_FILE DEFAULT verbose True
+    # Set debug
+    iniset $Q_DHCP_CONF_FILE DEFAULT debug True
+
+    # Update database
+    iniset $Q_DHCP_CONF_FILE DEFAULT db_connection "mysql:\/\/$MYSQL_USER:$MYSQL_PASSWORD@$MYSQL_HOST\/$Q_DB_NAME?charset=utf8"
+    iniset $Q_DHCP_CONF_FILE DEFAULT auth_url "$KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_AUTH_HOST:$KEYSTONE_AUTH_PORT/v2.0"
+    iniset $Q_DHCP_CONF_FILE DEFAULT admin_tenant_name $SERVICE_TENANT_NAME
+    iniset $Q_DHCP_CONF_FILE DEFAULT admin_user $Q_ADMIN_USERNAME
+    iniset $Q_DHCP_CONF_FILE DEFAULT admin_password $SERVICE_PASSWORD
+
+    if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
+        iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.OVSInterfaceDriver
+    elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
+        iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.BridgeInterfaceDriver
+    fi
+    # Start up the quantum agent
+    screen_it q-dhcp "sudo python $AGENT_DHCP_BINARY --config-file=$Q_DHCP_CONF_FILE"
+fi
+
 # Melange service
 if is_service_enabled m-svc; then
     if is_service_enabled mysql; then
@@ -1220,7 +1352,6 @@ if is_service_enabled m-svc; then
     fi
     melange mac_address_range create cidr=$M_MAC_RANGE
 fi
-
 
 
 # Nova
@@ -1258,7 +1389,7 @@ if [[ -d $NOVA_DIR/etc/nova/rootwrap.d ]]; then
     ROOTWRAP_SUDOER_CMD="$NOVA_ROOTWRAP *"
 fi
 
-# Set up the rootwrap sudoers
+# Set up the rootwrap sudoers for nova
 TEMPFILE=`mktemp`
 echo "$USER ALL=(root) NOPASSWD: $ROOTWRAP_SUDOER_CMD" >$TEMPFILE
 chmod 0440 $TEMPFILE
@@ -1306,15 +1437,6 @@ function clean_iptables() {
 
 if is_service_enabled n-cpu; then
 
-    # Virtualization Configuration
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    if [[ "$os_PACKAGE" = "deb" ]]; then
-        LIBVIRT_PKG_NAME=libvirt-bin
-    else
-        LIBVIRT_PKG_NAME=libvirt
-    fi
-    install_package $LIBVIRT_PKG_NAME
-
     # Force IP forwarding on, just on case
     sudo sysctl -w net.ipv4.ip_forward=1
 
@@ -1337,9 +1459,7 @@ if is_service_enabled n-cpu; then
     # to simulate multiple systems.
     if [[ "$LIBVIRT_TYPE" == "lxc" ]]; then
         if [[ "$os_PACKAGE" = "deb" ]]; then
-            if [[ "$DISTRO" > natty ]]; then
-                install_package cgroup-lite
-            else
+            if [[ ! "$DISTRO" > natty ]]; then
                 cgline="none /cgroup cgroup cpuacct,memory,devices,cpu,freezer,blkio 0 0"
                 sudo mkdir -p /cgroup
                 if ! grep -q cgroup /etc/fstab; then
@@ -1349,10 +1469,6 @@ if is_service_enabled n-cpu; then
                     sudo mount /cgroup
                 fi
             fi
-        else
-            ### FIXME(dtroyer): figure this out
-            echo "RPM-based cgroup not implemented yet"
-            yum_install libcgroup-tools
         fi
     fi
 
@@ -1431,7 +1547,7 @@ EOF'
     sudo rm -rf $NOVA_DIR/instances/*
 fi
 
-if is_service_enabled n-net; then
+if is_service_enabled n-net q-dhcp; then
     # Delete traces of nova networks from prior runs
     sudo killall dnsmasq || true
     clean_iptables
@@ -1442,13 +1558,14 @@ if is_service_enabled n-net; then
     sudo sysctl -w net.ipv4.ip_forward=1
 fi
 
+
 # Storage Service
+# ---------------
+
 if is_service_enabled swift; then
-    # Install memcached for swift.
-    install_package memcached
 
     # We make sure to kill all swift processes first
-    pkill -f -9 swift-
+    swift-init all stop || true
 
     # We first do a bit of setup by creating the directories and
     # changing the permissions so we can run it as our user.
@@ -1522,11 +1639,15 @@ if is_service_enabled swift; then
         sudo sed -i '/disable *= *yes/ { s/yes/no/ }' /etc/xinetd.d/rsync
     fi
 
+    if is_service_enabled swift3;then
+        swift_auth_server="s3token "
+    fi
+
     # By default Swift will be installed with the tempauth middleware
     # which has some default username and password if you have
     # configured keystone it will checkout the directory.
     if is_service_enabled key; then
-        swift_auth_server="s3token authtoken keystone"
+        swift_auth_server+="authtoken keystone"
     else
         swift_auth_server=tempauth
     fi
@@ -1549,7 +1670,10 @@ if is_service_enabled swift; then
     iniuncomment ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT bind_port
     iniset ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT bind_port ${SWIFT_DEFAULT_BIND_PORT:-8080}
 
-    iniset ${SWIFT_CONFIG_PROXY_SERVER} pipeline:main pipeline "catch_errors healthcheck cache ratelimit swift3 tempurl ${swift_auth_server} proxy-logging proxy-server"
+    # Only enable Swift3 if we have it enabled in ENABLED_SERVICES
+    is_service_enabled swift3 && swift3=swift3 || swift3=""
+
+    iniset ${SWIFT_CONFIG_PROXY_SERVER} pipeline:main pipeline "catch_errors healthcheck cache ratelimit ${swift3} ${swift_auth_server} proxy-logging proxy-server"
 
     iniset ${SWIFT_CONFIG_PROXY_SERVER} app:proxy-server account_autocreate true
 
@@ -1558,16 +1682,6 @@ if is_service_enabled swift; then
 [filter:keystone]
 paste.filter_factory = keystone.middleware.swift_auth:filter_factory
 operator_roles = Member,admin
-
-# NOTE(chmou): s3token middleware is not updated yet to use only
-# username and password.
-[filter:s3token]
-paste.filter_factory = keystone.middleware.s3_token:filter_factory
-auth_port = ${KEYSTONE_AUTH_PORT}
-auth_host = ${KEYSTONE_AUTH_HOST}
-auth_protocol = ${KEYSTONE_AUTH_PROTOCOL}
-auth_token = ${SERVICE_TOKEN}
-admin_token = ${SERVICE_TOKEN}
 
 [filter:authtoken]
 paste.filter_factory = keystone.middleware.auth_token:filter_factory
@@ -1579,10 +1693,23 @@ admin_tenant_name = ${SERVICE_TENANT_NAME}
 admin_user = swift
 admin_password = ${SERVICE_PASSWORD}
 delay_auth_decision = 1
+EOF
+    if is_service_enabled swift3;then
+        cat <<EOF>>${SWIFT_CONFIG_PROXY_SERVER}
+# NOTE(chmou): s3token middleware is not updated yet to use only
+# username and password.
+[filter:s3token]
+paste.filter_factory = keystone.middleware.s3_token:filter_factory
+auth_port = ${KEYSTONE_AUTH_PORT}
+auth_host = ${KEYSTONE_AUTH_HOST}
+auth_protocol = ${KEYSTONE_AUTH_PROTOCOL}
+auth_token = ${SERVICE_TOKEN}
+admin_token = ${SERVICE_TOKEN}
 
 [filter:swift3]
 use = egg:swift3#swift3
 EOF
+    fi
 
     cp ${SWIFT_DIR}/etc/swift.conf-sample ${SWIFT_CONFIG_DIR}/swift.conf
     iniset ${SWIFT_CONFIG_DIR}/swift.conf swift-hash swift_hash_path_suffix ${SWIFT_HASH}
@@ -1711,11 +1838,10 @@ elif is_service_enabled n-vol; then
     # volume group, create your own volume group called ``stack-volumes`` before
     # invoking ``stack.sh``.
     #
-    # By default, the backing file is 2G in size, and is stored in ``/opt/stack/data``.
+    # By default, the backing file is 5G in size, and is stored in ``/opt/stack/data``.
 
     if ! sudo vgs $VOLUME_GROUP; then
         VOLUME_BACKING_FILE=${VOLUME_BACKING_FILE:-$DATA_DIR/${VOLUME_GROUP}-backing-file}
-        VOLUME_BACKING_FILE_SIZE=${VOLUME_BACKING_FILE_SIZE:-2052M}
         # Only create if the file doesn't already exists
         [[ -f $VOLUME_BACKING_FILE ]] || truncate -s $VOLUME_BACKING_FILE_SIZE $VOLUME_BACKING_FILE
         DEV=`sudo losetup -f --show $VOLUME_BACKING_FILE`
@@ -1724,6 +1850,14 @@ elif is_service_enabled n-vol; then
     fi
 
     if sudo vgs $VOLUME_GROUP; then
+        if [[ "$os_PACKAGE" = "rpm" ]]; then
+            # RPM doesn't start the service
+            start_service tgtd
+        fi
+
+        # Setup tgtd configuration files
+        mkdir -p $NOVA_DIR/volumes
+
         # Remove nova iscsi targets
         sudo tgtadm --op show --mode target | grep $VOLUME_NAME_PREFIX | grep Target | cut -f3 -d ' ' | sudo xargs -n1 tgt-admin --delete || true
         # Clean out existing volumes
@@ -1736,13 +1870,18 @@ elif is_service_enabled n-vol; then
     fi
 
     if [[ "$os_PACKAGE" = "deb" ]]; then
+
+        # Setup the tgt configuration file
+        if [[ ! -f /etc/tgt/conf.d/nova.conf ]]; then
+           echo "include $NOVA_DIR/volumes/*" | sudo tee /etc/tgt/conf.d/nova.conf
+        fi
+
         # tgt in oneiric doesn't restart properly if tgtd isn't running
         # do it in two steps
         sudo stop tgt || true
         sudo start tgt
     else
-        # bypass redirection to systemctl during restart
-        sudo /sbin/service --skip-redirect tgtd restart
+        restart_service tgtd
     fi
 fi
 
@@ -1751,7 +1890,7 @@ function add_nova_opt {
     echo "$1" >> $NOVA_CONF_DIR/$NOVA_CONF
 }
 
-# remove legacy nova.conf
+# Remove legacy nova.conf
 rm -f $NOVA_DIR/bin/nova.conf
 
 # (re)create nova.conf
@@ -1767,15 +1906,27 @@ add_nova_opt "fixed_range=$FIXED_RANGE"
 add_nova_opt "s3_host=$SERVICE_HOST"
 add_nova_opt "s3_port=$S3_SERVICE_PORT"
 if is_service_enabled quantum; then
-    add_nova_opt "network_manager=nova.network.quantum.manager.QuantumManager"
-    add_nova_opt "quantum_connection_host=$Q_HOST"
-    add_nova_opt "quantum_connection_port=$Q_PORT"
+    if [[ "$NOVA_USE_QUANTUM_API" = "v1" ]]; then
+        add_nova_opt "network_manager=nova.network.quantum.manager.QuantumManager"
+        add_nova_opt "quantum_connection_host=$Q_HOST"
+        add_nova_opt "quantum_connection_port=$Q_PORT"
+        add_nova_opt "quantum_use_dhcp=True"
 
-    if is_service_enabled melange; then
-        add_nova_opt "quantum_ipam_lib=nova.network.quantum.melange_ipam_lib"
-        add_nova_opt "use_melange_mac_generation=True"
-        add_nova_opt "melange_host=$M_HOST"
-        add_nova_opt "melange_port=$M_PORT"
+        if is_service_enabled melange; then
+            add_nova_opt "quantum_ipam_lib=nova.network.quantum.melange_ipam_lib"
+            add_nova_opt "use_melange_mac_generation=True"
+            add_nova_opt "melange_host=$M_HOST"
+            add_nova_opt "melange_port=$M_PORT"
+        fi
+
+    elif [[ "$NOVA_USE_QUANTUM_API" = "v2" ]]; then
+        add_nova_opt "network_api_class=nova.network.quantumv2.api.API"
+        add_nova_opt "quantum_admin_username=$Q_ADMIN_USERNAME"
+        add_nova_opt "quantum_admin_password=$SERVICE_PASSWORD"
+        add_nova_opt "quantum_admin_auth_url=$KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_AUTH_PORT/v2.0"
+        add_nova_opt "quantum_auth_strategy=$Q_AUTH_STRATEGY"
+        add_nova_opt "quantum_admin_tenant_name=$SERVICE_TENANT_NAME"
+        add_nova_opt "quantum_url=http://$Q_HOST:$Q_PORT"
     fi
 
     if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
@@ -1794,7 +1945,6 @@ if is_service_enabled quantum; then
     add_nova_opt "libvirt_vif_type=ethernet"
     add_nova_opt "libvirt_vif_driver=$NOVA_VIF_DRIVER"
     add_nova_opt "linuxnet_interface_driver=$LINUXNET_VIF_DRIVER"
-    add_nova_opt "quantum_use_dhcp=True"
 else
     add_nova_opt "network_manager=nova.network.manager.$NET_MAN"
 fi
@@ -1815,6 +1965,7 @@ if [ -n "$FLAT_INTERFACE" ]; then
 fi
 add_nova_opt "sql_connection=$BASE_SQL_CONN/nova?charset=utf8"
 add_nova_opt "libvirt_type=$LIBVIRT_TYPE"
+add_nova_opt "libvirt_cpu_mode=none"
 add_nova_opt "instance_name_template=${INSTANCE_NAME_PREFIX}%08x"
 # All nova-compute workers need to know the vnc configuration options
 # These settings don't hurt anything if n-xvnc and n-novnc are disabled
@@ -1892,7 +2043,7 @@ done
 
 if [ "$VIRT_DRIVER" = 'xenserver' ]; then
     read_password XENAPI_PASSWORD "ENTER A PASSWORD TO USE FOR XEN."
-    add_nova_opt "connection_type=xenapi"
+    add_nova_opt "compute_driver=xenapi.XenAPIDriver"
     XENAPI_CONNECTION_URL=${XENAPI_CONNECTION_URL:-"http://169.254.0.1"}
     XENAPI_USER=${XENAPI_USER:-"root"}
     add_nova_opt "xenapi_connection_url=$XENAPI_CONNECTION_URL"
@@ -1902,8 +2053,15 @@ if [ "$VIRT_DRIVER" = 'xenserver' ]; then
     # Need to avoid crash due to new firewall support
     XEN_FIREWALL_DRIVER=${XEN_FIREWALL_DRIVER:-"nova.virt.firewall.IptablesFirewallDriver"}
     add_nova_opt "firewall_driver=$XEN_FIREWALL_DRIVER"
+elif [ "$VIRT_DRIVER" = 'openvz' ]; then
+    # TODO(deva): OpenVZ driver does not yet work if compute_driver is set here.
+    #             Replace connection_type when this is fixed.
+    #             add_nova_opt "compute_driver=openvz.connection.OpenVzConnection"
+    add_nova_opt "connection_type=openvz"
+    LIBVIRT_FIREWALL_DRIVER=${LIBVIRT_FIREWALL_DRIVER:-"nova.virt.libvirt.firewall.IptablesFirewallDriver"}
+    add_nova_opt "firewall_driver=$LIBVIRT_FIREWALL_DRIVER"
 else
-    add_nova_opt "connection_type=libvirt"
+    add_nova_opt "compute_driver=libvirt.LibvirtDriver"
     LIBVIRT_FIREWALL_DRIVER=${LIBVIRT_FIREWALL_DRIVER:-"nova.virt.libvirt.firewall.IptablesFirewallDriver"}
     add_nova_opt "firewall_driver=$LIBVIRT_FIREWALL_DRIVER"
 fi
@@ -1918,7 +2076,10 @@ fi
 if is_service_enabled mysql && is_service_enabled nova; then
     # (re)create nova database
     mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'DROP DATABASE IF EXISTS nova;'
-    mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'CREATE DATABASE nova;'
+    # Explicitly use latin1: to avoid lp#829209, nova expects the database to
+    # use latin1 by default, and then upgrades the database to utf8 (see the
+    # 082_essex.py in nova)
+    mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'CREATE DATABASE nova CHARACTER SET latin1;'
 
     # (re)create nova database
     $NOVA_DIR/bin/nova-manage db sync
@@ -1993,9 +2154,9 @@ if is_service_enabled key; then
 
         # Add quantum endpoints to service catalog if quantum is enabled
         if is_service_enabled quantum; then
-            echo "catalog.RegionOne.network.publicURL = http://%PUBLIC_SERVICE_HOST%:9696/" >> $KEYSTONE_CATALOG
-            echo "catalog.RegionOne.network.adminURL = http://%SERVICE_HOST%:9696/" >> $KEYSTONE_CATALOG
-            echo "catalog.RegionOne.network.internalURL = http://%SERVICE_HOST%:9696/" >> $KEYSTONE_CATALOG
+            echo "catalog.RegionOne.network.publicURL = http://%SERVICE_HOST%:$Q_PORT/" >> $KEYSTONE_CATALOG
+            echo "catalog.RegionOne.network.adminURL = http://%SERVICE_HOST%:$Q_PORT/" >> $KEYSTONE_CATALOG
+            echo "catalog.RegionOne.network.internalURL = http://%SERVICE_HOST%:$Q_PORT/" >> $KEYSTONE_CATALOG
             echo "catalog.RegionOne.network.name = Quantum Service" >> $KEYSTONE_CATALOG
         fi
 
@@ -2020,13 +2181,15 @@ if is_service_enabled key; then
     iniset $KEYSTONE_CONF_DIR/logging.conf logger_root level "DEBUG"
     iniset $KEYSTONE_CONF_DIR/logging.conf logger_root handlers "devel,production"
 
-    # Set up the keystone database
+    # Initialize keystone database
     $KEYSTONE_DIR/bin/keystone-manage db_sync
+    # set up certificates
+    $KEYSTONE_DIR/bin/keystone-manage pki_setup
 
     # launch keystone and wait for it to answer before continuing
     screen_it key "cd $KEYSTONE_DIR && $KEYSTONE_DIR/bin/keystone-all --config-file $KEYSTONE_CONF $KEYSTONE_LOG_CONFIG -d --debug"
     echo "Waiting for keystone to start..."
-    if ! timeout $SERVICE_TIMEOUT sh -c "while http_proxy= wget -O- $KEYSTONE_AUTH_PROTOCOL://$SERVICE_HOST:$KEYSTONE_API_PORT/v2.0/ 2>&1 | grep -q 'refused'; do sleep 1; done"; then
+    if ! timeout $SERVICE_TIMEOUT sh -c "while ! http_proxy= curl -s $KEYSTONE_AUTH_PROTOCOL://$SERVICE_HOST:$KEYSTONE_API_PORT/v2.0/ >/dev/null; do sleep 1; done"; then
       echo "keystone did not start"
       exit 1
     fi
@@ -2038,7 +2201,7 @@ if is_service_enabled key; then
     SERVICE_TOKEN=$SERVICE_TOKEN SERVICE_ENDPOINT=$SERVICE_ENDPOINT SERVICE_HOST=$SERVICE_HOST \
     S3_SERVICE_PORT=$S3_SERVICE_PORT KEYSTONE_CATALOG_BACKEND=$KEYSTONE_CATALOG_BACKEND \
     DEVSTACK_DIR=$TOP_DIR ENABLED_SERVICES=$ENABLED_SERVICES \
-        bash $FILES/keystone_data.sh
+        bash -x $FILES/keystone_data.sh
 
     # Set up auth creds now that keystone is bootstrapped
     export OS_AUTH_URL=$SERVICE_ENDPOINT
@@ -2046,8 +2209,8 @@ if is_service_enabled key; then
     export OS_USERNAME=admin
     export OS_PASSWORD=$ADMIN_PASSWORD
 
-    # create an access key and secret key for nova ec2 register image
-    if is_service_enabled swift && is_service_enabled nova; then
+    # Create an access key and secret key for nova ec2 register image
+    if is_service_enabled swift3 && is_service_enabled nova; then
         NOVA_USER_ID=$(keystone user-list | grep ' nova ' | get_field 1)
         NOVA_TENANT_ID=$(keystone tenant-list | grep " $SERVICE_TENANT_NAME " | get_field 1)
         CREDS=$(keystone ec2-credentials-create --user_id $NOVA_USER_ID --tenant_id $NOVA_TENANT_ID)
@@ -2059,7 +2222,7 @@ if is_service_enabled key; then
     fi
 fi
 
-# launch the nova-api and wait for it to answer before continuing
+# Launch the nova-api and wait for it to answer before continuing
 if is_service_enabled n-api; then
     add_nova_opt "enabled_apis=$NOVA_ENABLED_APIS"
     screen_it n-api "cd $NOVA_DIR && $NOVA_DIR/bin/nova-api"
@@ -2073,14 +2236,24 @@ fi
 # If we're using Quantum (i.e. q-svc is enabled), network creation has to
 # happen after we've started the Quantum service.
 if is_service_enabled mysql && is_service_enabled nova; then
-    # create a small network
-    $NOVA_DIR/bin/nova-manage network create private $FIXED_RANGE 1 $FIXED_NETWORK_SIZE $NETWORK_CREATE_ARGS
+    if [[ "$NOVA_USE_QUANTUM_API" = "v1" ]]; then
+        # Create a small network
+        $NOVA_DIR/bin/nova-manage network create private $FIXED_RANGE 1 $FIXED_NETWORK_SIZE $NETWORK_CREATE_ARGS
 
-    # create some floating ips
-    $NOVA_DIR/bin/nova-manage floating create $FLOATING_RANGE
+        # Create some floating ips
+        $NOVA_DIR/bin/nova-manage floating create $FLOATING_RANGE
 
-    # create a second pool
-    $NOVA_DIR/bin/nova-manage floating create --ip_range=$TEST_FLOATING_RANGE --pool=$TEST_FLOATING_POOL
+        # Create a second pool
+        $NOVA_DIR/bin/nova-manage floating create --ip_range=$TEST_FLOATING_RANGE --pool=$TEST_FLOATING_POOL
+    elif [[ "$NOVA_USE_QUANTUM_API" = "v2" ]]; then
+        TENANT_ID=$(keystone tenant-list | grep " demo " | get_field 1)
+
+        # Create a small network
+        # Since quantum command is executed in admin context at this point,
+        # --tenant_id needs to be specified.
+        NET_ID=$(quantum net-create --tenant_id $TENANT_ID net1 | grep ' id ' | get_field 2)
+        quantum subnet-create --tenant_id $TENANT_ID --ip_version 4 --gateway $NETWORK_GATEWAY $NET_ID $FIXED_RANGE
+    fi
 fi
 
 # Launching nova-compute should be as simple as running ``nova-compute`` but
@@ -2103,10 +2276,11 @@ fi
 screen_it horizon "cd $HORIZON_DIR && sudo tail -f /var/log/$APACHE_NAME/horizon_error.log"
 screen_it swift "cd $SWIFT_DIR && $SWIFT_DIR/bin/swift-proxy-server ${SWIFT_CONFIG_DIR}/proxy-server.conf -v"
 
-# Starting the nova-objectstore only if swift service is not enabled.
+# Starting the nova-objectstore only if swift3 service is not enabled.
 # Swift will act as s3 objectstore.
-is_service_enabled swift || \
+is_service_enabled swift3 || \
     screen_it n-obj "cd $NOVA_DIR && $NOVA_DIR/bin/nova-objectstore"
+
 
 # Install Images
 # ==============
@@ -2140,6 +2314,14 @@ if is_service_enabled g-reg; then
         IMAGE_FNAME=`basename "$image_url"`
         if [[ ! -f $FILES/$IMAGE_FNAME || "$(stat -c "%s" $FILES/$IMAGE_FNAME)" = "0" ]]; then
             wget -c $image_url -O $FILES/$IMAGE_FNAME
+        fi
+
+        # OpenVZ-format images are provided as .tar.gz, but not decompressed prior to loading
+        if [[ "$image_url" =~ 'openvz' ]]; then
+            IMAGE="$FILES/${IMAGE_FNAME}"
+            IMAGE_NAME="${IMAGE_FNAME%.tar.gz}"
+            glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$IMAGE_NAME" --public --container-format ami --disk-format ami < "$IMAGE"
+            continue
         fi
 
         KERNEL=""
