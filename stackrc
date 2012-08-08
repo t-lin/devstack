@@ -40,7 +40,7 @@ NOVA_BRANCH=master
 SWIFT_REPO=${GIT_BASE}/savi-dev/swift.git
 SWIFT_BRANCH=master
 SWIFT3_REPO=https://github.com/savi-dev/swift3.git
-SWIFT3_BRANCH=master
+SWIFT3_BRANCH=saviws2012
 
 
 # python swift client library
@@ -61,7 +61,7 @@ KEYSTONE_BRANCH=master
 
 # a websockets/html5 or flash powered VNC console for vm instances
 NOVNC_REPO=https://github.com/savi-dev/noVNC.git
-NOVNC_BRANCH=master
+NOVNC_BRANCH=saviws2012
 
 # django powered web control panel for openstack
 HORIZON_REPO=${GIT_BASE}/savi-dev/horizon.git
