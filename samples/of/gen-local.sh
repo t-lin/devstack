@@ -57,6 +57,14 @@ done
 echo "Please enter a password (this is going to be used for all services):"
 read PASSWORD
 
+echo "Which interface should be used for host (ie, "$(interfaces)")?"
+read HOST_INT
+
+if ! interface_exists $HOST_INT; then
+  echo "There is no interface "$HOST_INT
+  exit 1
+fi
+
 echo "Which interface should be used for vm connection (ie, "$(interfaces)")?"
 read FLAT_INT
 
@@ -72,6 +80,29 @@ if [ $HOST_IP_READ ]; then
   HOST_IP=$HOST_IP_READ
 fi
 
+PUBLIC_IP=$HOST_IP
+echo "What is the public host address for services endpoints? [$HOST_IP]"
+read PUBLIC_IP_READ
+
+if [ $PUBLIC_IP_READ ]; then
+  PUBLIC_IP=$PUBLIC_IP_READ
+fi
+
+FLOATING_RANGE=10.10.10.100
+echo "What is the floating range? [$FLOATING_RANGE]"
+read FLOATING_RANGE_READ
+if [ $FLOATING_RANGE_READ ]; then
+  FLOATING_RANGE=$FLOATING_RANGE_READ
+fi
+
+SWIFT_DISK_SIZE=5000000
+echo "What is the loopback disk size for Swift? [$SWIFT_DISK_SIZE]"
+read SWIFT_DISK_SIZE_READ
+if [ $SWIFT_DISK_SIZE_READ ]; then
+  SWIFT_DISK_SIZE=$SWIFT_DISK_SIZE_READ
+fi
+
+
 echo "Would you like to use OpenFlow? ([n]/y)"
 read USE_OF
 
@@ -82,6 +113,24 @@ if [[ "$USE_OF" == "y" ]]; then
 fi
 
 if [[ $AGENT == 0 ]]; then
+
+  PUBLIC_INT=$HOST_INT
+  echo "Which interface should be used for public connnections [$HOST_INT]?"
+  read PUBLIC_INT_READ
+
+  if [ $PUBLIC_INT_READ ]; then 
+
+    if ! interface_exists $PUBLIC_INT_READ; then
+
+      echo "There is no interface "$PUBLIC_INT_READ
+      exit 1
+
+    fi
+
+    PUBLIC_INT=$PUBLIC_INT_READ
+
+  fi
+
   cp $OF_DIR/ctrl-localrc localrc
   if [[ $USE_OF == "y" ]]; then
     sed -i -e 's/RYU_ENABLED_//g' localrc
@@ -89,11 +138,16 @@ if [[ $AGENT == 0 ]]; then
     sed -i -e 's/RYU_ENABLED_/#/g' localrc
   fi
 
+  sed -i -e 's/\${HOST_IP_IFACE}/'$HOST_INT'/g' localrc
   sed -i -e 's/\${FLAT_INTERFACE}/'$FLAT_INT'/g' localrc
+  sed -i -e 's/\${PUBLIC_INTERFACE}/'$PUBLIC_INT'/g' localrc
   sed -i -e 's/\${HOST_IP}/'$HOST_IP'/g' localrc
+  sed -i -e 's/\${PUBLIC_SERVICE_HOST}/'$PUBLIC_IP'/g' localrc
+  sed -i -e 's/\${FLOATING_RANGE}/'$FLOATING_RANGE'/g' localrc
   sed -i -e 's/\${PASSWORD}/'$PASSWORD'/g' localrc
   sed -i -e 's/\${Q_PLUGIN}/'$Q_PLUGIN'/g' localrc
   sed -i -e 's/\${RYU_HOST}/'$HOST_IP'/g' localrc
+  sed -i -e 's/\${SWIFT_DISK_SIZE}/'$SWIFT_DISK_SIZE'/g' localrc
 
   echo "localrc generated for the controller node."
 else

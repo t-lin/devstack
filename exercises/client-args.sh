@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 
+**client-args.sh**
+
 # Test OpenStack client authentication aguemnts handling
 
 echo "*********************************************************************"
 echo "Begin DevStack Exercise: $0"
 echo "*********************************************************************"
+
 
 # Settings
 # ========
@@ -38,7 +41,7 @@ export x_USERNAME=$OS_USERNAME
 export x_PASSWORD=$OS_PASSWORD
 export x_AUTH_URL=$OS_AUTH_URL
 
-#Unset the usual variables to force argument processing
+# Unset the usual variables to force argument processing
 unset OS_TENANT_NAME
 unset OS_USERNAME
 unset OS_PASSWORD
@@ -113,7 +116,7 @@ if [[ "$ENABLED_SERVICES" =~ "swift" ]]; then
         STATUS_SWIFT="Skipped"
     else
         echo -e "\nTest Swift"
-        if swift $ARGS stat; then
+        if swift $TENANT_ARG $ARGS stat; then
             STATUS_SWIFT="Succeeded"
         else
             STATUS_SWIFT="Failed"

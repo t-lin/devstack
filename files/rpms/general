@@ -1,3 +1,4 @@
+bridge-utils
 curl
 euca2ools # only for testing client
 git-core
@@ -9,6 +10,7 @@ python-pip
 python-unittest2
 python-virtualenv
 screen
+tar
 tcpdump
 unzip
 wget
