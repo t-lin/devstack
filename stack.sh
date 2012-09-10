@@ -288,6 +288,15 @@ RYU_OFP_HOST=${RYU_OFP_HOST:-127.0.0.1}
 # Ryu OFP Port
 RYU_OFP_PORT=${RYU_OFP_PORT:-6633}
 
+# FlowVisor Config File for Default Ryu Control
+RYU_FV_CONFIG=${RYU_FV_CONFIG:-/usr/local/etc/flowvisor/ryu_fv.json}
+# FlowVisor Control Password File
+RYU_FV_PASSFILE=${RYU_FV_PASSFILE:-/usr/local/etc/flowvisor/passFile}
+# FlowVisor Non-Admin Slice Default Password
+RYU_FV_DEFAULT_PASS=${RYU_FV_DEFAULT_PASS:-supersecret}
+# FlowVisor Default Slice Name
+RYU_FV_DEFAULT_SLICE=${RYU_FV_DEFAULT_SLICE:-fvadmin}
+
 # Name of the lvm volume group to use/create for iscsi volumes
 VOLUME_GROUP=${VOLUME_GROUP:-stack-volumes}
 VOLUME_NAME_PREFIX=${VOLUME_NAME_PREFIX:-volume-}
@@ -1123,6 +1132,9 @@ if is_service_enabled q-svc; then
 --wsapi_port=$RYU_API_PORT
 --ofp_listen_host=$RYU_OFP_HOST
 --ofp_tcp_listen_port=$RYU_OFP_PORT
+--fv_pass_file=$RYU_FV_PASSFILE
+--fv_slice_default_pass=$RYU_FV_DEFAULT_PASS
+--fv_default_slice=$RYU_FV_DEFAULT_SLICE
 EOF
         #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_demorunner"
         screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_isolation"
@@ -2289,9 +2301,19 @@ if [[ -n "$EXTRA_FLAGS" ]]; then
     echo "WARNING: EXTRA_FLAGS is defined and may need to be converted to EXTRA_OPTS"
 fi
 
+if is_service_enabled fv; then
+    # Start up FlowVisor and give it time to start up
+    screen_it fv "cd ~ && flowvisor -l $RYU_FV_CONFIG"
+    sleep 3
+
+    # Set OVS controller to FlowVisor
+    sudo ovs-vsctl set-controller br-int tcp:10.10.10.80:6633
+fi
+
 # Indicate how long this took to run (bash maintained variable 'SECONDS')
 echo "stack.sh completed in $SECONDS seconds."
 
 #ETH_PORT=`sudo ovs-ofctl show br-int | grep eth | cut -c 2`
 #sudo ovs-ofctl add-flow br-int in_port=$ETH_PORT,actions=drop
+
 
