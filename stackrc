@@ -49,8 +49,8 @@ GLANCECLIENT_REPO=https://github.com/savi-dev/python-glanceclient
 GLANCECLIENT_BRANCH=silver
 
 # unified auth system (manages accounts/tokens)
-KEYSTONE_REPO=https://github.com/savi-dev/keystone.git
-KEYSTONE_BRANCH=silver
+KEYSTONE_REPO=https://github.com/openstack/keystone.git
+KEYSTONE_BRANCH=master
 
 # a websockets/html5 or flash powered VNC console for vm instances
 NOVNC_REPO=https://github.com/savi-dev/noVNC.git
@@ -69,8 +69,8 @@ OPENSTACKCLIENT_REPO=https://github.com/savi-dev/python-openstackclient.git
 OPENSTACKCLIENT_BRANCH=silver
 
 # python keystone client library to nova that horizon uses
-KEYSTONECLIENT_REPO=https://github.com/savi-dev/python-keystoneclient
-KEYSTONECLIENT_BRANCH=silver
+KEYSTONECLIENT_REPO=https://github.com/mfaraji/python-keystoneclient
+KEYSTONECLIENT_BRANCH=master
 
 # quantum service
 QUANTUM_REPO=https://github.com/savi-dev/quantum

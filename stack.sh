@@ -544,7 +544,7 @@ KEYSTONE_API_PORT=${KEYSTONE_API_PORT:-5000}
 KEYSTONE_AUTH_HOST=${KEYSTONE_AUTH_HOST:-$SERVICE_HOST}
 KEYSTONE_AUTH_PORT=${KEYSTONE_AUTH_PORT:-35357}
 KEYSTONE_AUTH_PROTOCOL=${KEYSTONE_AUTH_PROTOCOL:-http}
-KEYSTONE_SERVICE_HOST=${KEYSTONE_SERVICE_HOST:-$SERVICE_HOST}
+KEYSTONE_SERVICE_HOST=${KEYSTONE_AUTH_HOST:-$SERVICE_HOST}
 KEYSTONE_SERVICE_PORT=${KEYSTONE_SERVICE_PORT:-5000}
 KEYSTONE_SERVICE_PROTOCOL=${KEYSTONE_SERVICE_PROTOCOL:-http}
 
@@ -1692,7 +1692,7 @@ EOF
    cd WebOb-1.1.1
    sudo python setup.py install
    cd ..
-   
+
    swift-init all restart || true
    swift-init proxy stop || true
 
@@ -2024,11 +2024,13 @@ if is_service_enabled key; then
     $KEYSTONE_DIR/bin/keystone-manage db_sync
 
     # launch keystone and wait for it to answer before continuing
-    screen_it key "cd $KEYSTONE_DIR && $KEYSTONE_DIR/bin/keystone-all --config-file $KEYSTONE_CONF $KEYSTONE_LOG_CONFIG -d --debug"
-    echo "Waiting for keystone to start..."
-    if ! timeout $SERVICE_TIMEOUT sh -c "while http_proxy= wget -O- $KEYSTONE_AUTH_PROTOCOL://$SERVICE_HOST:$KEYSTONE_API_PORT/v2.0/ 2>&1 | grep -q 'refused'; do sleep 1; done"; then
-      echo "keystone did not start"
-      exit 1
+     if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
+       screen_it key "cd $KEYSTONE_DIR && $KEYSTONE_DIR/bin/keystone-all --config-file $KEYSTONE_CONF $KEYSTONE_LOG_CONFIG -d --debug"
+       echo "Waiting for keystone to start..."
+       if ! timeout $SERVICE_TIMEOUT sh -c "while ! http_proxy= curl -s $KEYSTONE_AUTH_PROTOCOL://$SERVICE_HOST:$KEYSTONE_API_PORT/v2.0/ >/dev/null; do sleep 1; done"; then
+         echo "keystone did not start"
+         exit 1
+       fi
     fi
 
     # keystone_data.sh creates services, admin and demo users, and roles.
@@ -2036,8 +2038,8 @@ if is_service_enabled key; then
 
     ADMIN_PASSWORD=$ADMIN_PASSWORD SERVICE_TENANT_NAME=$SERVICE_TENANT_NAME SERVICE_PASSWORD=$SERVICE_PASSWORD \
     SERVICE_TOKEN=$SERVICE_TOKEN SERVICE_ENDPOINT=$SERVICE_ENDPOINT SERVICE_HOST=$SERVICE_HOST \
-    S3_SERVICE_PORT=$S3_SERVICE_PORT KEYSTONE_CATALOG_BACKEND=$KEYSTONE_CATALOG_BACKEND \
-    DEVSTACK_DIR=$TOP_DIR ENABLED_SERVICES=$ENABLED_SERVICES \
+    S3_SERVICE_PORT=$S3_SERVICE_PORT KEYSTONE_CATALOG_BACKEND=$KEYSTONE_CATALOG_BACKEND KEYSTONE_TYPE=$KEYSTONE_TYPE \
+    DEVSTACK_DIR=$TOP_DIR ENABLED_SERVICES=$ENABLED_SERVICES REGION_NAME=$REGION_NAME\
         bash $FILES/keystone_data.sh
 
     # Set up auth creds now that keystone is bootstrapped
@@ -2127,7 +2129,8 @@ is_service_enabled swift || \
 if is_service_enabled g-reg; then
     # Create a directory for the downloaded image tarballs.
     mkdir -p $FILES/images
-
+	unset SERVICE_ENDPOINT
+	unset SERVICE_TOKEN
     TOKEN=$(keystone  token-get | grep ' id ' | get_field 2)
 
     # Option to upload legacy ami-tty, which works with xenserver

@@ -57,6 +57,22 @@ done
 echo "Please enter a password (this is going to be used for all services):"
 read PASSWORD
 
+
+#IS_KEYSTONE_CENTRAL=false
+KEYSTONE_TYPE="LOCAL"
+REGION_NAME="CORE"
+KEYSTONE_AUTH_HOST=""
+while true; do
+    read -p "Do you want to install Keystone?" yn
+    case $yn in
+        [Nn]* ) read -p "Please Enter Central Keystone IP address?" KEYSTONE_AUTH_HOST; read -p "Please Enter Region name?" REGION_NAME;KEYSTONE_TYPE="CENTRAL";break;;
+        [Yy]* ) break;;
+        * ) echo "Please answer yes or no.";;
+    esac
+done
+
+
+
 echo "Which interface should be used for host (ie, "$(interfaces)")?"
 read HOST_INT
 
@@ -118,7 +134,7 @@ if [[ $AGENT == 0 ]]; then
   echo "Which interface should be used for public connnections [$HOST_INT]?"
   read PUBLIC_INT_READ
 
-  if [ $PUBLIC_INT_READ ]; then 
+  if [ $PUBLIC_INT_READ ]; then
 
     if ! interface_exists $PUBLIC_INT_READ; then
 
@@ -171,7 +187,9 @@ else
 
   echo "localrc generated for a compute node."
 fi
-
+ sed -i -e 's/\${KEYSTONE_TYPE}/'$KEYSTONE_TYPE'/g' localrc
+ sed -i -e 's/\${REGION_NAME}/'$REGION_NAME'/g' localrc
+ sed -i -e 's/\${KEYSTONE_AUTH_HOST}/'$KEYSTONE_AUTH_HOST'/g' localrc
 echo "Now run ./stack.sh"
 
 
