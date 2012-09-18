@@ -296,6 +296,8 @@ RYU_FV_PASSFILE=${RYU_FV_PASSFILE:-/usr/local/etc/flowvisor/passFile}
 RYU_FV_DEFAULT_PASS=${RYU_FV_DEFAULT_PASS:-supersecret}
 # FlowVisor Default Slice Name
 RYU_FV_DEFAULT_SLICE=${RYU_FV_DEFAULT_SLICE:-fvadmin}
+# FlowVisor Listen Port
+RYU_FV_PORT=${RYU_FV_PORT:-6633}
 
 # Name of the lvm volume group to use/create for iscsi volumes
 VOLUME_GROUP=${VOLUME_GROUP:-stack-volumes}
@@ -1205,7 +1207,11 @@ if is_service_enabled q-agt; then
 
         sudo sed -i -e "s/.*local_ip = .*/local_ip = $HOST_IP/g" /$Q_PLUGIN_CONF_FILE
         sudo sed -i -e "s/.*integration_bridge = .*/integration_bridge = $OVS_BRIDGE/g" /$Q_PLUGIN_CONF_FILE
-        sudo sed -i -e "s/.*openflow_controller = .*/openflow_controller = $RYU_OFP_HOST:$RYU_OFP_PORT/g" /$Q_PLUGIN_CONF_FILE
+        if is_service_enabled fv; then
+            sudo sed -i -e "s/.*openflow_controller = .*/openflow_controller = $RYU_OFP_HOST:$RYU_FV_PORT/g" /$Q_PLUGIN_CONF_FILE
+        else
+            sudo sed -i -e "s/.*openflow_controller = .*/openflow_controller = $RYU_OFP_HOST:$RYU_OFP_PORT/g" /$Q_PLUGIN_CONF_FILE
+        fi
         sudo sed -i -e "s/.*openflow_rest_api = .*/openflow_rest_api = $RYU_API_HOST:$RYU_API_PORT/g" /$Q_PLUGIN_CONF_FILE
 
         AGENT_BINARY=$QUANTUM_DIR/quantum/plugins/ryu/agent/ryu_quantum_agent.py
@@ -1568,7 +1574,7 @@ if is_service_enabled swift; then
 
     iniset ${SWIFT_CONFIG_PROXY_SERVER} app:proxy-server account_autocreate true
 
-    cat <<EOF>> ${SWIFT_CONFIG_PROXY_SERVER}
+    cat <<EOF >> ${SWIFT_CONFIG_PROXY_SERVER}
 
 [filter:keystone]
 paste.filter_factory = keystone.middleware.swift_auth:filter_factory
@@ -2255,6 +2261,12 @@ if is_service_enabled g-reg; then
     done
 fi
 
+# Start up FlowVisor
+if is_service_enabled fv; then
+    # Start up FlowVisor and give it time to start up
+    screen_it fv "cd ~ && flowvisor -l $RYU_FV_CONFIG"
+    sleep 3
+fi
 
 # Run local script
 # ================
@@ -2301,19 +2313,6 @@ if [[ -n "$EXTRA_FLAGS" ]]; then
     echo "WARNING: EXTRA_FLAGS is defined and may need to be converted to EXTRA_OPTS"
 fi
 
-if is_service_enabled fv; then
-    # Start up FlowVisor and give it time to start up
-    screen_it fv "cd ~ && flowvisor -l $RYU_FV_CONFIG"
-    sleep 3
-
-    # Set OVS controller to FlowVisor
-    sudo ovs-vsctl set-controller br-int tcp:10.10.10.80:6633
-fi
-
 # Indicate how long this took to run (bash maintained variable 'SECONDS')
 echo "stack.sh completed in $SECONDS seconds."
-
-#ETH_PORT=`sudo ovs-ofctl show br-int | grep eth | cut -c 2`
-#sudo ovs-ofctl add-flow br-int in_port=$ETH_PORT,actions=drop
-
 
