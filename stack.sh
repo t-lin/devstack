@@ -913,7 +913,10 @@ if is_service_enabled horizon; then
 
     # ``local_settings.py`` is used to override horizon default settings.
     local_settings=$HORIZON_DIR/openstack_dashboard/local/local_settings.py
-    cp $FILES/horizon_settings.py $local_settings
+#    cp $FILES/horizon_settings.py $local_settings
+    sudo sh -c "sed -e \"
+        s,127.0.0.1,$KEYSTONE_SERVICE_HOST,g;
+    \" $FILES/horizon_settings.py > $local_settings"
 
     # Initialize the horizon database (it stores sessions and notices shown to
     # users).  The user system is external (keystone).
@@ -1094,6 +1097,7 @@ if is_service_enabled q-svc; then
 
     if [[ -e $QUANTUM_DIR/etc/api-paste.ini ]]; then
       sudo mv $QUANTUM_DIR/etc/api-paste.ini $Q_API_PASTE_FILE
+      iniset $Q_API_PASTE_FILE filter:authtoken auth_host $KEYSTONE_AUTH_HOST
     fi
 
     if [[ -e $QUANTUM_DIR/etc/policy.json ]]; then
@@ -1289,6 +1293,7 @@ if is_service_enabled n-api; then
         /admin_password/s/^.*$/admin_password = $SERVICE_PASSWORD/;
         s,%SERVICE_TENANT_NAME%,$SERVICE_TENANT_NAME,g;
         s,%SERVICE_TOKEN%,$SERVICE_TOKEN,g;
+        s,127.0.0.1,$KEYSTONE_SERVICE_HOST,g;
     " -i $NOVA_CONF_DIR/api-paste.ini
 fi
 
@@ -2039,7 +2044,7 @@ if is_service_enabled key; then
     ADMIN_PASSWORD=$ADMIN_PASSWORD SERVICE_TENANT_NAME=$SERVICE_TENANT_NAME SERVICE_PASSWORD=$SERVICE_PASSWORD \
     SERVICE_TOKEN=$SERVICE_TOKEN SERVICE_ENDPOINT=$SERVICE_ENDPOINT SERVICE_HOST=$SERVICE_HOST \
     S3_SERVICE_PORT=$S3_SERVICE_PORT KEYSTONE_CATALOG_BACKEND=$KEYSTONE_CATALOG_BACKEND KEYSTONE_TYPE=$KEYSTONE_TYPE \
-    DEVSTACK_DIR=$TOP_DIR ENABLED_SERVICES=$ENABLED_SERVICES REGION_NAME=$REGION_NAME\
+    DEVSTACK_DIR=$TOP_DIR ENABLED_SERVICES=$ENABLED_SERVICES REGION_NAME=$REGION_NAME KEYSTONE_SERVICE_HOST=$KEYSTONE_SERVICE_HOST\
         bash $FILES/keystone_data.sh
 
     # Set up auth creds now that keystone is bootstrapped

@@ -286,14 +286,12 @@ if [[ "$ENABLED_SERVICES" =~ "c-control" ]]; then
 fi
 # Keystone
 if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
-  if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
   keystone endpoint-create \
         --region ${REGION_NAME} \
       --service_id $KEYSTONE_SERVICE \
-      --publicurl "http://$SERVICE_HOST:\$(public_port)s/v2.0" \
-      --adminurl "http://$SERVICE_HOST:\$(admin_port)s/v2.0" \
-      --internalurl "http://$SERVICE_HOST:\$(admin_port)s/v2.0"
-  fi
+      --publicurl "http://$KEYSTONE_SERVICE_HOST:\$(public_port)s/v2.0" \
+      --adminurl "http://$KEYSTONE_SERVICE_HOST:\$(admin_port)s/v2.0" \
+      --internalurl "http://$KEYSTONE_SERVICE_HOST:\$(public_port)s/v2.0"
 fi
 # Nova
 if [[ "$ENABLED_SERVICES" =~ "n-cpu" ]]; then
