@@ -244,6 +244,9 @@ else
   if [[ "$ENABLED_SERVICES" =~ "c-control" ]]; then
     CHEETAH_SERVICE = $(keystone service-id cheetah)
   fi
+  if [[ "$ENABLED_SERVICES" =~ "key" ]]; then
+    KEYSTONE_SERVICE=$(keystone service-id keystone)
+  fi
   if [[ "$ENABLED_SERVICES" =~ "n-cpu" ]]; then
     NOVA_SERVICE=$(keystone service-id nova)
   fi
