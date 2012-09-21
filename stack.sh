@@ -963,70 +963,97 @@ fi
 # Glance
 # ------
 
-if is_service_enabled g-reg; then
+if is_service_enabled g-reg g-api; then
     GLANCE_CONF_DIR=/etc/glance
     if [[ ! -d $GLANCE_CONF_DIR ]]; then
         sudo mkdir -p $GLANCE_CONF_DIR
     fi
     sudo chown `whoami` $GLANCE_CONF_DIR
-    GLANCE_IMAGE_DIR=$DEST/glance/images
-    # Delete existing images
-    rm -rf $GLANCE_IMAGE_DIR
-
-    # Use local glance directories
-    mkdir -p $GLANCE_IMAGE_DIR
 
     # (re)create glance database
     mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'DROP DATABASE IF EXISTS glance;'
     mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'CREATE DATABASE glance CHARACTER SET utf8;'
 
-    # Copy over our glance configurations and update them
-    GLANCE_REGISTRY_CONF=$GLANCE_CONF_DIR/glance-registry.conf
-    cp $GLANCE_DIR/etc/glance-registry.conf $GLANCE_REGISTRY_CONF
-    iniset $GLANCE_REGISTRY_CONF DEFAULT debug True
-    inicomment $GLANCE_REGISTRY_CONF DEFAULT log_file
-    iniset $GLANCE_REGISTRY_CONF DEFAULT sql_connection $BASE_SQL_CONN/glance?charset=utf8
-    iniset $GLANCE_REGISTRY_CONF DEFAULT use_syslog $SYSLOG
-    iniset $GLANCE_REGISTRY_CONF paste_deploy flavor keystone
+    if is_servie_enabled g-reg; then
+        GLANCE_IMAGE_DIR=$DEST/glance/images
+        # Delete existing images
+        rm -rf $GLANCE_IMAGE_DIR
 
-    GLANCE_REGISTRY_PASTE_INI=$GLANCE_CONF_DIR/glance-registry-paste.ini
-    cp $GLANCE_DIR/etc/glance-registry-paste.ini $GLANCE_REGISTRY_PASTE_INI
-    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_host $KEYSTONE_AUTH_HOST
-    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_port $KEYSTONE_AUTH_PORT
-    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_protocol $KEYSTONE_AUTH_PROTOCOL
-    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_uri $KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_SERVICE_PORT/
-    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken admin_tenant_name $SERVICE_TENANT_NAME
-    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken admin_user glance
-    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken admin_password $SERVICE_PASSWORD
+        # Use local glance directories
+        mkdir -p $GLANCE_IMAGE_DIR
 
-    GLANCE_API_CONF=$GLANCE_CONF_DIR/glance-api.conf
-    cp $GLANCE_DIR/etc/glance-api.conf $GLANCE_API_CONF
-    iniset $GLANCE_API_CONF DEFAULT debug True
-    inicomment $GLANCE_API_CONF DEFAULT log_file
-    iniset $GLANCE_API_CONF DEFAULT sql_connection $BASE_SQL_CONN/glance?charset=utf8
-    iniset $GLANCE_API_CONF DEFAULT use_syslog $SYSLOG
-    iniset $GLANCE_API_CONF DEFAULT filesystem_store_datadir $GLANCE_IMAGE_DIR/
-    iniset $GLANCE_API_CONF paste_deploy flavor keystone
+        # Copy over our glance configurations and update them
+        GLANCE_REGISTRY_CONF=$GLANCE_CONF_DIR/glance-registry.conf
+        cp $GLANCE_DIR/etc/glance-registry.conf $GLANCE_REGISTRY_CONF
+        iniset $GLANCE_REGISTRY_CONF DEFAULT debug True
+        inicomment $GLANCE_REGISTRY_CONF DEFAULT log_file
+        iniset $GLANCE_REGISTRY_CONF DEFAULT sql_connection $BASE_SQL_CONN/glance?charset=utf8
+        iniset $GLANCE_REGISTRY_CONF DEFAULT use_syslog $SYSLOG
+        iniset $GLANCE_REGISTRY_CONF paste_deploy flavor keystone
 
-    # Store the images in swift if enabled.
-    if is_service_enabled swift; then
-        iniset $GLANCE_API_CONF DEFAULT default_store swift
-        iniset $GLANCE_API_CONF DEFAULT swift_store_auth_address $KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_SERVICE_PORT/v2.0/
-        iniset $GLANCE_API_CONF DEFAULT swift_store_user $SERVICE_TENANT_NAME:glance
-        iniset $GLANCE_API_CONF DEFAULT swift_store_key $SERVICE_PASSWORD
-        iniset $GLANCE_API_CONF DEFAULT swift_store_region $REGION_NAME
-        iniset $GLANCE_API_CONF DEFAULT swift_store_create_container_on_put True
+        if [ -z "$GLANCE_REGISTRY_AUTH_HOST" ]; then
+            GLANCE_REGISTRY_AUTH_HOST = $KEYSTONE_AUTH_HOST
+        fi
+        if [ -z "$GLANCE_REGISTRY_AUTH_PORT" ]; then
+            GLANCE_REGISTRY_AUTH_PORT = $KEYSTONE_AUTH_PORT
+        fi
+
+        GLANCE_REGISTRY_PASTE_INI=$GLANCE_CONF_DIR/glance-registry-paste.ini
+        cp $GLANCE_DIR/etc/glance-registry-paste.ini $GLANCE_REGISTRY_PASTE_INI
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_host $GLANCE_REGISTRY_AUTH_HOST
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_port $GLANCE_REGISTRY_AUTH_PORT
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_protocol $KEYSTONE_AUTH_PROTOCOL
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_uri $KEYSTONE_SERVICE_PROTOCOL://$GLANCE_REGISTRY_AUTH_HOST:$KEYSTONE_SERVICE_PORT/
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken admin_tenant_name $SERVICE_TENANT_NAME
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken admin_user glance
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken admin_password $SERVICE_PASSWORD
     fi
+    if is_service_enabled g-api; then
+        GLANCE_API_CONF=$GLANCE_CONF_DIR/glance-api.conf
+        cp $GLANCE_DIR/etc/glance-api.conf $GLANCE_API_CONF
+        iniset $GLANCE_API_CONF DEFAULT debug True
+        inicomment $GLANCE_API_CONF DEFAULT log_file
+        iniset $GLANCE_API_CONF DEFAULT sql_connection $BASE_SQL_CONN/glance?charset=utf8
+        iniset $GLANCE_API_CONF DEFAULT use_syslog $SYSLOG
+        iniset $GLANCE_API_CONF DEFAULT filesystem_store_datadir $GLANCE_IMAGE_DIR/
+        iniset $GLANCE_API_CONF paste_deploy flavor $GLANCE_API_FLAVOR
+        iniset $GLANCE_API_CONF DEFAULT registry_host $GLANCE_REGISTRY_HOST
+        iniset $GLANCE_API_CONF DEFAULT registry_port $GLANCE_REGISTRY_PORT
+        iniset $GLANCE_API_CONF DEFAULT image_cache_max_size $GLANCE_CACHE_MAX_SIZE
+        
+        if [ "$GLANCE_API_FLAVOR" == "keystone+cachemanagement" ]; then
+           echo "PATH=""$PATH" > cronTemp 
+           echo "*""$GLANCE_CACHE_PRUNER_INTERVAL"" * * * * glance-cache-pruner --config-file=""$GLANCE_API_CONF" >> cronTemp
+           echo "*""$GLANCE_CACHE_CLEANER_INTERVAL"" * * * * glance-cache-cleaner --config-file=""$GLANCE_API_CONF" >> cronTemp
+	   crontab cronTemp
+           rm cronTemp
+        fi
+        if [ -z "$GLANCE_API_AUTH_HOST" ]; then
+            GLANCE_API_AUTH_HOST=$KEYSTONE_AUTH_HOST
+        fi
+        if [ -z "$GLANCE_API_AUTH_PORT" ]; then
+            GLANCE_API_AUTH_PORT=$KEYSTONE_AUTH_PORT
+        fi
 
-    GLANCE_API_PASTE_INI=$GLANCE_CONF_DIR/glance-api-paste.ini
-    cp $GLANCE_DIR/etc/glance-api-paste.ini $GLANCE_API_PASTE_INI
-    iniset $GLANCE_API_PASTE_INI filter:authtoken auth_host $KEYSTONE_AUTH_HOST
-    iniset $GLANCE_API_PASTE_INI filter:authtoken auth_port $KEYSTONE_AUTH_PORT
-    iniset $GLANCE_API_PASTE_INI filter:authtoken auth_protocol $KEYSTONE_AUTH_PROTOCOL
-    iniset $GLANCE_API_PASTE_INI filter:authtoken auth_uri $KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_SERVICE_PORT/
-    iniset $GLANCE_API_PASTE_INI filter:authtoken admin_tenant_name $SERVICE_TENANT_NAME
-    iniset $GLANCE_API_PASTE_INI filter:authtoken admin_user glance
-    iniset $GLANCE_API_PASTE_INI filter:authtoken admin_password $SERVICE_PASSWORD
+        # Store the images in swift if enabled.
+        if is_service_enabled swift; then
+            iniset $GLANCE_API_CONF DEFAULT default_store swift
+            iniset $GLANCE_API_CONF DEFAULT swift_store_auth_address $KEYSTONE_SERVICE_PROTOCOL://$GLANCE_API_AUTH_HOST:$KEYSTONE_SERVICE_PORT/v2.0/
+            iniset $GLANCE_API_CONF DEFAULT swift_store_user $SERVICE_TENANT_NAME:glance
+            iniset $GLANCE_API_CONF DEFAULT swift_store_key $SERVICE_PASSWORD
+            iniset $GLANCE_API_CONF DEFAULT swift_store_region $REGION_NAME
+            iniset $GLANCE_API_CONF DEFAULT swift_store_create_container_on_put True
+        fi
+        GLANCE_API_PASTE_INI=$GLANCE_CONF_DIR/glance-api-paste.ini
+        cp $GLANCE_DIR/etc/glance-api-paste.ini $GLANCE_API_PASTE_INI
+        iniset $GLANCE_API_PASTE_INI filter:authtoken auth_host $GLANCE_API_AUTH_HOST
+        iniset $GLANCE_API_PASTE_INI filter:authtoken auth_port $GLANCE_API_AUTH_PORT
+        iniset $GLANCE_API_PASTE_INI filter:authtoken auth_protocol $KEYSTONE_AUTH_PROTOCOL
+        iniset $GLANCE_API_PASTE_INI filter:authtoken auth_uri $KEYSTONE_SERVICE_PROTOCOL://$GLANCE_API_AUTH_HOST:$KEYSTONE_SERVICE_PORT/
+        iniset $GLANCE_API_PASTE_INI filter:authtoken admin_tenant_name $SERVICE_TENANT_NAME
+        iniset $GLANCE_API_PASTE_INI filter:authtoken admin_user glance
+        iniset $GLANCE_API_PASTE_INI filter:authtoken admin_password $SERVICE_PASSWORD
+    fi
 
     GLANCE_POLICY_JSON=$GLANCE_CONF_DIR/policy.json
     cp $GLANCE_DIR/etc/policy.json $GLANCE_POLICY_JSON
@@ -1133,6 +1160,7 @@ if is_service_enabled q-svc; then
 --ofp_tcp_listen_port=$RYU_OFP_PORT
 EOF
         screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_demorunner"
+#        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_switch"
         sleep 15
     fi
 
@@ -1694,13 +1722,9 @@ EOF
    # proxy service so we can run it in foreground in screen.
    # ``swift-init ... {stop|restart}`` exits with '1' if no servers are running,
    # ignore it just in case
-   if [[ ! -d WebOb-1.1.1 ]]; then
-     wget http://pypi.python.org/packages/source/W/WebOb/WebOb-1.1.1.zip#md5=989155580606c1f5472fced859976b4b
-     unzip WebOb-1.1.1.zip
-   fi
-   cd WebOb-1.1.1
-   sudo python setup.py install
-   cd ..
+   
+   #change webob to version 1.0.8 
+   sudo pip install webob==1.0.8
 
    swift-init all restart || true
    swift-init proxy stop || true
@@ -1948,7 +1972,7 @@ fi
 
 # launch the glance api and wait for it to answer before continuing
 if is_service_enabled g-api; then
-    screen_it g-api "cd $GLANCE_DIR; bin/glance-api --config-file=$GLANCE_CONF_DIR/glance-api.conf"
+    screen_it g-api "cd $GLANCE_DIR; sudo bin/glance-api --config-file=$GLANCE_CONF_DIR/glance-api.conf"
     echo "Waiting for g-api ($GLANCE_HOSTPORT) to start..."
     if ! timeout $SERVICE_TIMEOUT sh -c "while ! http_proxy= wget -q -O- http://$GLANCE_HOSTPORT; do sleep 1; done"; then
       echo "g-api did not start"
@@ -2135,7 +2159,8 @@ is_service_enabled swift || \
 #  * **natty**: http://uec-images.ubuntu.com/natty/current/natty-server-cloudimg-amd64.tar.gz
 #  * **oneiric**: http://uec-images.ubuntu.com/oneiric/current/oneiric-server-cloudimg-amd64.tar.gz
 
-if is_service_enabled g-reg; then
+sleep 10
+
     # Create a directory for the downloaded image tarballs.
     mkdir -p $FILES/images
 	unset SERVICE_ENDPOINT
@@ -2200,22 +2225,21 @@ if is_service_enabled g-reg; then
         esac
 
         if [ "$CONTAINER_FORMAT" = "bare" ]; then
-            glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$IMAGE_NAME" --public --container-format=$CONTAINER_FORMAT --disk-format $DISK_FORMAT < <(zcat --force "${IMAGE}")
+            glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$REGION_NAME-$IMAGE_NAME" --public --container-format=$CONTAINER_FORMAT --disk-format $DISK_FORMAT < <(zcat --force "${IMAGE}")
         else
             # Use glance client to add the kernel the root filesystem.
             # We parse the results of the first upload to get the glance ID of the
             # kernel for use when uploading the root filesystem.
             KERNEL_ID=""; RAMDISK_ID="";
             if [ -n "$KERNEL" ]; then
-                KERNEL_ID=$(glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$IMAGE_NAME-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
+                KERNEL_ID=$(glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$REGION_NAME-$IMAGE_NAME-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
             fi
             if [ -n "$RAMDISK" ]; then
-                RAMDISK_ID=$(glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$IMAGE_NAME-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
+                RAMDISK_ID=$(glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$REGION_NAME-$IMAGE_NAME-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
             fi
-            glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "${IMAGE_NAME%.img}" --public --container-format ami --disk-format ami ${KERNEL_ID:+--property kernel_id=$KERNEL_ID} ${RAMDISK_ID:+--property ramdisk_id=$RAMDISK_ID} < "${IMAGE}"
+            glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$REGION_NAME-${IMAGE_NAME%.img}" --public --container-format ami --disk-format ami ${KERNEL_ID:+--property kernel_id=$KERNEL_ID} ${RAMDISK_ID:+--property ramdisk_id=$RAMDISK_ID} < "${IMAGE}"
         fi
     done
-fi
 
 
 # Run local script
