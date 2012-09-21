@@ -265,6 +265,9 @@ MELANGE_DIR=$DEST/melange
 MELANGECLIENT_DIR=$DEST/python-melangeclient
 RYU_DIR=$DEST/ryu
 
+#Default region name
+REGION_NAME=${REGION_NAME:-CORE}
+
 # Default Quantum Plugin
 Q_PLUGIN=${Q_PLUGIN:-openvswitch}
 # Default Quantum Port
@@ -1011,6 +1014,7 @@ if is_service_enabled g-reg; then
         iniset $GLANCE_API_CONF DEFAULT swift_store_auth_address $KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_SERVICE_PORT/v2.0/
         iniset $GLANCE_API_CONF DEFAULT swift_store_user $SERVICE_TENANT_NAME:glance
         iniset $GLANCE_API_CONF DEFAULT swift_store_key $SERVICE_PASSWORD
+        iniset $GLANCE_API_CONF DEFAULT swift_store_region $REGION_NAME
         iniset $GLANCE_API_CONF DEFAULT swift_store_create_container_on_put True
     fi
 
@@ -2196,19 +2200,19 @@ if is_service_enabled g-reg; then
         esac
 
         if [ "$CONTAINER_FORMAT" = "bare" ]; then
-            glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$IMAGE_NAME" --public --container-format=$CONTAINER_FORMAT --disk-format $DISK_FORMAT < <(zcat --force "${IMAGE}")
+            glance --os_region_name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$IMAGE_NAME" --public --container-format=$CONTAINER_FORMAT --disk-format $DISK_FORMAT < <(zcat --force "${IMAGE}")
         else
             # Use glance client to add the kernel the root filesystem.
             # We parse the results of the first upload to get the glance ID of the
             # kernel for use when uploading the root filesystem.
             KERNEL_ID=""; RAMDISK_ID="";
             if [ -n "$KERNEL" ]; then
-                KERNEL_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$IMAGE_NAME-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
+                KERNEL_ID=$(glance --os_region_name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$IMAGE_NAME-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
             fi
             if [ -n "$RAMDISK" ]; then
-                RAMDISK_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$IMAGE_NAME-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
+                RAMDISK_ID=$(glance --os_region_name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$IMAGE_NAME-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
             fi
-            glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "${IMAGE_NAME%.img}" --public --container-format ami --disk-format ami ${KERNEL_ID:+--property kernel_id=$KERNEL_ID} ${RAMDISK_ID:+--property ramdisk_id=$RAMDISK_ID} < "${IMAGE}"
+            glance --os_region_name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "${IMAGE_NAME%.img}" --public --container-format ami --disk-format ami ${KERNEL_ID:+--property kernel_id=$KERNEL_ID} ${RAMDISK_ID:+--property ramdisk_id=$RAMDISK_ID} < "${IMAGE}"
         fi
     done
 fi
