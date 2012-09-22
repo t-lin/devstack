@@ -291,6 +291,17 @@ RYU_OFP_HOST=${RYU_OFP_HOST:-127.0.0.1}
 # Ryu OFP Port
 RYU_OFP_PORT=${RYU_OFP_PORT:-6633}
 
+# FlowVisor Config File for Default Ryu Control
+RYU_FV_CONFIG=${RYU_FV_CONFIG:-/usr/local/etc/flowvisor/ryu_fv.json}
+# FlowVisor Control Password File
+RYU_FV_PASSFILE=${RYU_FV_PASSFILE:-/usr/local/etc/flowvisor/passFile}
+# FlowVisor Non-Admin Slice Default Password
+RYU_FV_DEFAULT_PASS=${RYU_FV_DEFAULT_PASS:-supersecret}
+# FlowVisor Default Slice Name
+RYU_FV_DEFAULT_SLICE=${RYU_FV_DEFAULT_SLICE:-fvadmin}
+# FlowVisor Listen Port
+RYU_FV_PORT=${RYU_FV_PORT:-6633}
+
 # Name of the lvm volume group to use/create for iscsi volumes
 VOLUME_GROUP=${VOLUME_GROUP:-stack-volumes}
 VOLUME_NAME_PREFIX=${VOLUME_NAME_PREFIX:-volume-}
@@ -1158,9 +1169,14 @@ if is_service_enabled q-svc; then
 --wsapi_port=$RYU_API_PORT
 --ofp_listen_host=$RYU_OFP_HOST
 --ofp_tcp_listen_port=$RYU_OFP_PORT
+--fv_pass_file=$RYU_FV_PASSFILE
+--fv_slice_default_pass=$RYU_FV_DEFAULT_PASS
+--fv_default_slice=$RYU_FV_DEFAULT_SLICE
 EOF
-        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_demorunner"
-#        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_switch"
+        #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_demorunner"
+        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_isolation"
+        #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_switch"
+        #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.configurable_device"
         sleep 15
     fi
 
@@ -1226,7 +1242,11 @@ if is_service_enabled q-agt; then
 
         sudo sed -i -e "s/.*local_ip = .*/local_ip = $HOST_IP/g" /$Q_PLUGIN_CONF_FILE
         sudo sed -i -e "s/.*integration_bridge = .*/integration_bridge = $OVS_BRIDGE/g" /$Q_PLUGIN_CONF_FILE
-        sudo sed -i -e "s/.*openflow_controller = .*/openflow_controller = $RYU_OFP_HOST:$RYU_OFP_PORT/g" /$Q_PLUGIN_CONF_FILE
+        if is_service_enabled fv; then
+            sudo sed -i -e "s/.*openflow_controller = .*/openflow_controller = $RYU_OFP_HOST:$RYU_FV_PORT/g" /$Q_PLUGIN_CONF_FILE
+        else
+            sudo sed -i -e "s/.*openflow_controller = .*/openflow_controller = $RYU_OFP_HOST:$RYU_OFP_PORT/g" /$Q_PLUGIN_CONF_FILE
+        fi
         sudo sed -i -e "s/.*openflow_rest_api = .*/openflow_rest_api = $RYU_API_HOST:$RYU_API_PORT/g" /$Q_PLUGIN_CONF_FILE
 
         AGENT_BINARY=$QUANTUM_DIR/quantum/plugins/ryu/agent/ryu_quantum_agent.py
@@ -1590,7 +1610,7 @@ if is_service_enabled swift; then
 
     iniset ${SWIFT_CONFIG_PROXY_SERVER} app:proxy-server account_autocreate true
 
-    cat <<EOF>>${SWIFT_CONFIG_PROXY_SERVER}
+    cat <<EOF >> ${SWIFT_CONFIG_PROXY_SERVER}
 
 [filter:keystone]
 paste.filter_factory = keystone.middleware.swift_auth:filter_factory
@@ -1839,7 +1859,6 @@ if is_service_enabled n-vol; then
 fi
 add_nova_opt "osapi_compute_extension=nova.api.openstack.compute.contrib.standard_extensions"
 add_nova_opt "my_ip=$HOST_IP"
-add_nova_opt "routing_source_ip=$PUBLIC_SERVICE_HOST"
 add_nova_opt "public_interface=$PUBLIC_INTERFACE"
 add_nova_opt "vlan_interface=$VLAN_INTERFACE"
 add_nova_opt "flat_network_bridge=$FLAT_NETWORK_BRIDGE"
@@ -1852,9 +1871,9 @@ add_nova_opt "instance_name_template=${INSTANCE_NAME_PREFIX}%08x"
 # All nova-compute workers need to know the vnc configuration options
 # These settings don't hurt anything if n-xvnc and n-novnc are disabled
 if is_service_enabled n-cpu; then
-    NOVNCPROXY_URL=${NOVNCPROXY_URL:-"http://$PUBLIC_SERVICE_HOST:6080/vnc_auto.html"}
+    NOVNCPROXY_URL=${NOVNCPROXY_URL:-"http://$SERVICE_HOST:6080/vnc_auto.html"}
     add_nova_opt "novncproxy_base_url=$NOVNCPROXY_URL"
-    XVPVNCPROXY_URL=${XVPVNCPROXY_URL:-"http://$PUBLIC_SERVICE_HOST:6081/console"}
+    XVPVNCPROXY_URL=${XVPVNCPROXY_URL:-"http://$SERVICE_HOST:6081/console"}
     add_nova_opt "xvpvncproxy_base_url=$XVPVNCPROXY_URL"
 fi
 if [ "$VIRT_DRIVER" = 'xenserver' ]; then
@@ -2105,11 +2124,47 @@ if is_service_enabled n-api; then
     fi
 fi
 
+function get_tenant_id {
+    name=$1
+    URL=$KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_AUTH_HOST:$KEYSTONE_AUTH_PORT/v2.0
+    keystone --os_username admin --os_password $ADMIN_PASSWORD --os_auth_url $URL \
+             --os_tenant_name $name tenant-list|awk '/ '$name' /{print $2}'
+}
+
 # If we're using Quantum (i.e. q-svc is enabled), network creation has to
 # happen after we've started the Quantum service.
 if is_service_enabled mysql && is_service_enabled nova; then
     # create a small network
-    $NOVA_DIR/bin/nova-manage network create private $FIXED_RANGE 1 $FIXED_NETWORK_SIZE $NETWORK_CREATE_ARGS
+#:<<'END'
+    #if is_service_enabled key && is_service_enabled q-svc && is_service_enabled ryu; then
+    if is_service_enabled key && is_service_enabled q-svc; then
+        tenantid=`get_tenant_id admin`
+        $NOVA_DIR/bin/nova-manage network create --label=admin \
+            --fixed_range_v4=$FIXED_RANGE_ADMIN --project_id=$tenantid \
+            --num_networks=1 --network_size=$FIXED_NETWORK_SIZE_ADMIN \
+	    --priority=0 \
+            --gateway=$FIXED_RANGE_ADMIN_GATEWAY
+        tenantid=`get_tenant_id demo`
+        $NOVA_DIR/bin/nova-manage network create --label=demo \
+            --fixed_range_v4=$FIXED_RANGE_DEMO --project_id=$tenantid \
+            --num_networks=1 --network_size=$FIXED_NETWORK_SIZE_DEMO \
+	    --priority=0 \
+            --gateway=$FIXED_RANGE_DEMO_GATEWAY
+    elif is_service_enabled q-svc && is_service_enabled ryu; then
+        $NOVA_DIR/bin/nova-manage network create --label=admin \
+            --fixed_range_v4=$FIXED_RANGE_ADMIN --project_id=admin \
+            --num_networks=1 --network_size=$FIXED_NETWORK_SIZE_ADMIN \
+	    --priority=0 \
+            --gateway=$FIXED_RANGE_ADMIN_GATEWAY
+        $NOVA_DIR/bin/nova-manage network create --label=demo \
+            --fixed_range_v4=$FIXED_RANGE_DEMO --project_id=demo \
+            --num_networks=1 --network_size=$FIXED_NETWORK_SIZE_DEMO \
+	    --priority=0 \
+            --gateway=$FIXED_RANGE_DEMO_GATEWAY
+    else
+#END
+       $NOVA_DIR/bin/nova-manage network create private $FIXED_RANGE 1 $FIXED_NETWORK_SIZE $NETWORK_CREATE_ARGS
+    fi
 
     # create some floating ips
     $NOVA_DIR/bin/nova-manage floating create $FLOATING_RANGE
@@ -2241,6 +2296,12 @@ sleep 10
         fi
     done
 
+# Start up FlowVisor
+if is_service_enabled fv; then
+    # Start up FlowVisor and give it time to start up
+    screen_it fv "cd ~ && flowvisor -l $RYU_FV_CONFIG"
+    sleep 3
+fi
 
 # Run local script
 # ================
@@ -2289,3 +2350,4 @@ fi
 
 # Indicate how long this took to run (bash maintained variable 'SECONDS')
 echo "stack.sh completed in $SECONDS seconds."
+
