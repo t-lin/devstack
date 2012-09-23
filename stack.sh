@@ -2159,7 +2159,8 @@ is_service_enabled swift || \
 #  * **natty**: http://uec-images.ubuntu.com/natty/current/natty-server-cloudimg-amd64.tar.gz
 #  * **oneiric**: http://uec-images.ubuntu.com/oneiric/current/oneiric-server-cloudimg-amd64.tar.gz
 
-sleep 10
+if is_service_enabled g-api; then
+    sleep 5
 
     # Create a directory for the downloaded image tarballs.
     mkdir -p $FILES/images
@@ -2240,7 +2241,7 @@ sleep 10
             glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$REGION_NAME-${IMAGE_NAME%.img}" --public --container-format ami --disk-format ami ${KERNEL_ID:+--property kernel_id=$KERNEL_ID} ${RAMDISK_ID:+--property ramdisk_id=$RAMDISK_ID} < "${IMAGE}"
         fi
     done
-
+fi
 
 # Run local script
 # ================
