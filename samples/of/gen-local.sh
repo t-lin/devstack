@@ -119,16 +119,6 @@ if [ $SWIFT_DISK_SIZE_READ ]; then
   SWIFT_DISK_SIZE=$SWIFT_DISK_SIZE_READ
 fi
 
-DEF_IMAGE=y
-while true; do
-    read -p "Do you want to load default images?(y/n)" yn
-    case $yn in
-        [Nn]* ) DEF_IMAGE=n;break;;
-        [Yy]* ) DEF_IMAGE=y;break;;
-        * ) echo "Please answer yes or no.";;
-    esac
-done
-
 echo ""
 
 #GLANCE CONFIG
@@ -153,6 +143,8 @@ if [[ "$GLANCE_REGISTRY_ENABLED" == "true" ]]; then
   GLANCE_REGISTRY_AUTH_HOST=$KEYSTONE_AUTH_HOST
   GLANCE_REGISTRY_AUTH_PORT=35357
 fi
+
+DEF_IMAGE=n
 
 if [[ "$GLANCE_API_ENABLED" == "true" ]]; then
   GLANCE_REGISTRY_HOST=$HOST_IP
@@ -212,6 +204,19 @@ if [[ "$GLANCE_API_ENABLED" == "true" ]]; then
   #keystone for Glance API
   GLANCE_API_AUTH_HOST=$KEYSTONE_AUTH_HOST
   GLANCE_API_AUTH_PORT=35357
+
+  #Load default Images to local API
+  DEF_IMAGE=y
+  while true; do
+    read -p "Do you want to load default images?(y/n)" yn
+    case $yn in
+        [Nn]* ) DEF_IMAGE=n;break;;
+        [Yy]* ) DEF_IMAGE=y;break;;
+        * ) echo "Please answer yes or no.";;
+    esac
+  done
+
+  echo ""
 
 fi
 
