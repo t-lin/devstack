@@ -94,82 +94,84 @@ if [ $PUBLIC_IP_READ ]; then
   PUBLIC_IP=$PUBLIC_IP_READ
 fi
 
-FLOATING_RANGE=10.10.10.100
-echo "What is the floating range? [$FLOATING_RANGE]"
-read FLOATING_RANGE_READ
-if [ $FLOATING_RANGE_READ ]; then
-  FLOATING_RANGE=$FLOATING_RANGE_READ
-fi
+if [[ $AGENT == 0 ]]; then
+  FLOATING_RANGE=10.10.10.100
+  echo "What is the floating range? [$FLOATING_RANGE]"
+  read FLOATING_RANGE_READ
+  if [ $FLOATING_RANGE_READ ]; then
+    FLOATING_RANGE=$FLOATING_RANGE_READ
+  fi
 
-while true; do
+
+  while true; do
     read -p "Do you want to install Keystone?" yn
     case $yn in
         [Nn]* ) read -p "Please Enter Central Keystone IP address?" KEYSTONE_AUTH_HOST; read -p "Please Enter Region name?" REGION_NAME;KEYSTONE_TYPE="CENTRAL";break;;
         [Yy]* ) KEYSTONE_AUTH_HOST=$HOST_IP;break;;
         * ) echo "Please answer yes or no.";;
     esac
-done
+  done
 
-echo ""
+  echo ""
 
-SWIFT_DISK_SIZE=5000000
-echo "What is the loopback disk size for Swift? [$SWIFT_DISK_SIZE]"
-read SWIFT_DISK_SIZE_READ
-if [ $SWIFT_DISK_SIZE_READ ]; then
-  SWIFT_DISK_SIZE=$SWIFT_DISK_SIZE_READ
-fi
-
-echo ""
-
-#GLANCE CONFIG
-echo "Do you want to running both glance registry and glance api in the same machine?([y]/n)"
-read RUN_BOTH_GLANCE_REG_API
-if [[ "$RUN_BOTH_GLANCE_REG_API" == "n" ]]; then
-  echo "Which glance service do you want to run ([api]/registry)"
-  read GLANCE_SERVICE
-  if [[ "$GLANCE_SERVICE" == "registry" ]]; then
-    GLANCE_REGISTRY_ENABLED=true
-    GLANCE_API_ENABLED=false
-  else
-    GLANCE_API_ENABLED=true
-    GLANCE_REGISTRY_ENABLED=false
+  SWIFT_DISK_SIZE=5000000
+  echo "What is the loopback disk size for Swift? [$SWIFT_DISK_SIZE]"
+  read SWIFT_DISK_SIZE_READ
+  if [ $SWIFT_DISK_SIZE_READ ]; then
+    SWIFT_DISK_SIZE=$SWIFT_DISK_SIZE_READ
   fi
-else
-  GLANCE_REGISTRY_ENABLED=true
-  GLANCE_API_ENABLED=true
-fi  
 
-if [[ "$GLANCE_REGISTRY_ENABLED" == "true" ]]; then
-  GLANCE_REGISTRY_AUTH_HOST=$KEYSTONE_AUTH_HOST
-  GLANCE_REGISTRY_AUTH_PORT=35357
-fi
+  echo ""
 
-DEF_IMAGE=n
-
-if [[ "$GLANCE_API_ENABLED" == "true" ]]; then
-  GLANCE_REGISTRY_HOST=$HOST_IP
-  GLANCE_REGISTRY_PORT=9191
-
-  #registry address for api
-  if [[ "$GLANCE_REGISTRY_ENABLED" == "false" ]]; then
-    echo "config glance API"
-
-    GLANCE_REGISTRY_HOST=$KEYSTONE_AUTH_HOST
-    echo "Enter the host address of the Glance registry server for this glance API [$KEYSTONE_AUTH_HOST]"
-    read GLANCE_REGISTRY_HOST_READ
-
-    if [ $GLANCE_REGISTRY_HOST_READ ]; then
-      GLANCE_REGISTRY_HOST=$GLANCE_REGISTRY_HOST_READ
+  #GLANCE CONFIG
+  echo "Do you want to running both glance registry and glance api in the same machine?([y]/n)"
+  read RUN_BOTH_GLANCE_REG_API
+  if [[ "$RUN_BOTH_GLANCE_REG_API" == "n" ]]; then
+    echo "Which glance service do you want to run ([api]/registry)"
+    read GLANCE_SERVICE
+    if [[ "$GLANCE_SERVICE" == "registry" ]]; then
+      GLANCE_REGISTRY_ENABLED=true
+      GLANCE_API_ENABLED=false
+    else
+      GLANCE_API_ENABLED=true
+      GLANCE_REGISTRY_ENABLED=false
     fi
+  else
+    GLANCE_REGISTRY_ENABLED=true
+    GLANCE_API_ENABLED=true
+  fi  
 
+  if [[ "$GLANCE_REGISTRY_ENABLED" == "true" ]]; then
+    GLANCE_REGISTRY_AUTH_HOST=$KEYSTONE_AUTH_HOST
+    GLANCE_REGISTRY_AUTH_PORT=35357
+  fi
+
+  DEF_IMAGE=n
+
+  if [[ "$GLANCE_API_ENABLED" == "true" ]]; then
+    GLANCE_REGISTRY_HOST=$HOST_IP
     GLANCE_REGISTRY_PORT=9191
 
-    echo "Enter the port of the Glance registry [9191]"
-    read GLANCE_REGISTRY_PORT_READ
+    #registry address for api
+    if [[ "$GLANCE_REGISTRY_ENABLED" == "false" ]]; then
+      echo "config glance API"
 
-    if [ $GLANCE_REGISTRY_PORT_READ ]; then
-      GLANCE_REGISTRY_PORT=$GLANCE_REGISTRY_PORT_READ
-    fi
+      GLANCE_REGISTRY_HOST=$KEYSTONE_AUTH_HOST
+      echo "Enter the host address of the Glance registry server for this glance API [$KEYSTONE_AUTH_HOST]"
+      read GLANCE_REGISTRY_HOST_READ
+
+      if [ $GLANCE_REGISTRY_HOST_READ ]; then
+        GLANCE_REGISTRY_HOST=$GLANCE_REGISTRY_HOST_READ
+      fi
+
+      GLANCE_REGISTRY_PORT=9191
+
+      echo "Enter the port of the Glance registry [9191]"
+      read GLANCE_REGISTRY_PORT_READ
+
+      if [ $GLANCE_REGISTRY_PORT_READ ]; then
+        GLANCE_REGISTRY_PORT=$GLANCE_REGISTRY_PORT_READ
+      fi
   fi
 
   #cache
@@ -218,6 +220,7 @@ if [[ "$GLANCE_API_ENABLED" == "true" ]]; then
 
   echo ""
 
+  fi
 fi
 
 echo "Would you like to use OpenFlow? ([n]/y)"

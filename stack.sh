@@ -974,7 +974,7 @@ if is_service_enabled g-reg g-api; then
     mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'DROP DATABASE IF EXISTS glance;'
     mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'CREATE DATABASE glance CHARACTER SET utf8;'
 
-    if is_servie_enabled g-reg; then
+    if is_service_enabled g-reg; then
         GLANCE_IMAGE_DIR=$DEST/glance/images
         # Delete existing images
         rm -rf $GLANCE_IMAGE_DIR
@@ -1159,8 +1159,8 @@ if is_service_enabled q-svc; then
 --ofp_listen_host=$RYU_OFP_HOST
 --ofp_tcp_listen_port=$RYU_OFP_PORT
 EOF
-        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_demorunner"
-#        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_switch"
+#        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_demorunner"
+        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_switch"
         sleep 15
     fi
 
