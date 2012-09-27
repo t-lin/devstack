@@ -301,6 +301,8 @@ RYU_FV_DEFAULT_PASS=${RYU_FV_DEFAULT_PASS:-supersecret}
 RYU_FV_DEFAULT_SLICE=${RYU_FV_DEFAULT_SLICE:-fvadmin}
 # FlowVisor Listen Port
 RYU_FV_PORT=${RYU_FV_PORT:-6633}
+# FlowVisor API Port
+RYU_FV_API_PORT=`grep "api_webserver_port" $RYU_FV_CONFIG | cut -d "t" -f 2- | sed 's/[^0-9]//g'`
 
 # Name of the lvm volume group to use/create for iscsi volumes
 VOLUME_GROUP=${VOLUME_GROUP:-stack-volumes}
@@ -985,7 +987,7 @@ if is_service_enabled g-reg g-api; then
     mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'DROP DATABASE IF EXISTS glance;'
     mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'CREATE DATABASE glance CHARACTER SET utf8;'
 
-    if is_servie_enabled g-reg; then
+    if is_service_enabled g-reg; then
         GLANCE_IMAGE_DIR=$DEST/glance/images
         # Delete existing images
         rm -rf $GLANCE_IMAGE_DIR
@@ -1169,6 +1171,7 @@ if is_service_enabled q-svc; then
 --wsapi_port=$RYU_API_PORT
 --ofp_listen_host=$RYU_OFP_HOST
 --ofp_tcp_listen_port=$RYU_OFP_PORT
+--fv_api_port=$RYU_FV_API_PORT
 --fv_pass_file=$RYU_FV_PASSFILE
 --fv_slice_default_pass=$RYU_FV_DEFAULT_PASS
 --fv_default_slice=$RYU_FV_DEFAULT_SLICE
