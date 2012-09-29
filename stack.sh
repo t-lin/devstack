@@ -292,11 +292,11 @@ RYU_OFP_HOST=${RYU_OFP_HOST:-127.0.0.1}
 RYU_OFP_PORT=${RYU_OFP_PORT:-6633}
 
 # FlowVisor Config File for Default Ryu Control
-RYU_FV_CONFIG=${RYU_FV_CONFIG:-/usr/local/etc/flowvisor/ryu_fv.json}
+RYU_FV_CONFIG=${RYU_FV_CONFIG:-/usr/etc/flowvisor/fv_config.json}
 # FlowVisor Control Password File
 RYU_FV_PASSFILE=${RYU_FV_PASSFILE:-/usr/local/etc/flowvisor/passFile}
 # FlowVisor Non-Admin Slice Default Password
-RYU_FV_DEFAULT_PASS=${RYU_FV_DEFAULT_PASS:-supersecret}
+RYU_FV_SLICE_PASS=${RYU_FV_SLICE_PASS:-supersecret}
 # FlowVisor Default Slice Name
 RYU_FV_DEFAULT_SLICE=${RYU_FV_DEFAULT_SLICE:-fvadmin}
 # FlowVisor Listen Port
@@ -1173,7 +1173,7 @@ if is_service_enabled q-svc; then
 --ofp_tcp_listen_port=$RYU_OFP_PORT
 --fv_api_port=$RYU_FV_API_PORT
 --fv_pass_file=$RYU_FV_PASSFILE
---fv_slice_default_pass=$RYU_FV_DEFAULT_PASS
+--fv_slice_default_pass=$RYU_FV_SLICE_PASS
 --fv_default_slice=$RYU_FV_DEFAULT_SLICE
 EOF
         #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_demorunner"

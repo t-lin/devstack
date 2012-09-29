@@ -224,9 +224,32 @@ echo "Would you like to use OpenFlow? ([n]/y)"
 read USE_OF
 
 Q_PLUGIN=openvswitch
-if [[ "$USE_OF" == "y" ]]; then
+if [[ "$USE_OF" == "y" || "$USE_OF" == "Y" ]]; then
   echo "This version supports only Ryu."
+  echo ''
   Q_PLUGIN=ryu
+  
+  if [[ $AGENT == 0 ]]; then
+    read -p "Do you want to install FlowVisor? ([n]/y)" FV_ENABLED
+    
+    if [[ "$FV_ENABLED" == "y" || "$FV_ENABLED" == "Y" ]]; then
+      # Install FlowVisor if it hasn't been installed already
+      fv_installed=`sudo dpkg --list | grep flowvisor` || true
+      
+      if [[ -z "$fv_installed" ]]; then
+        echo "Installing FlowVisor, please wait..."
+        sudo bash -c 'echo "deb http://updates.flowvisor.org/openflow/downloads/GENI/DEB unstable/binary-\$(ARCH)/" >> /etc/apt/sources.list'
+        sudo apt-get update
+        sudo apt-get install flowvisor
+      fi
+      
+      # Assuming FlowVisor installs to /etc/usr/flowvisor directory...
+      FV_DIR=/usr/etc/flowvisor
+      touch $FV_DIR/passFile
+      echo '' > $FV_DIR/passFile
+      echo ''
+    fi
+  fi
 fi
 
 if [[ $AGENT == 0 ]]; then
@@ -249,10 +272,25 @@ if [[ $AGENT == 0 ]]; then
   fi
 
   cp $OF_DIR/ctrl-localrc localrc
-  if [[ $USE_OF == "y" ]]; then
+  if [[ $USE_OF == "y" || "$USE_OF" == "Y" ]]; then
     sed -i -e 's/RYU_ENABLED_//g' localrc
   else
     sed -i -e 's/RYU_ENABLED_/#/g' localrc
+  fi
+  
+  if [[ "$FV_ENABLED" == "y" || "$FV_ENABLED" == "Y" ]]; then
+    sed -i -e 's/FV_ENABLED_//g' localrc
+    
+    # Change Ryu OFP port so it doesn't conflict with FV's OFP port
+    sed -i -e 's/6633/6634/g' localrc
+    
+    cp $OF_DIR/fv_config.json $FV_DIR/fv_config.json
+    sed -i -e 's/0\.0\.0\.0/'$HOST_IP'/g' $FV_DIR/fv_config.json
+    
+    echo "Note: If you want to use the 'fvctl' CLI tool native to FlowVisor, it is recommended you add an alias to .bashrc:"
+    echo "    alias fvctl='fvctl --passwd-file=/usr/etc/flowvisor/passFile --url=https://localhost:8085'"
+  else
+    sed -i -e 's/FV_ENABLED_/#/g' localrc
   fi
   
   if [[ $GLANCE_REGISTRY_ENABLED == "true" ]]; then
