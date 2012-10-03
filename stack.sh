@@ -2225,6 +2225,12 @@ if is_service_enabled g-api; then
             *) echo "Do not know what to do with $IMAGE_FNAME"; false;;
         esac
 
+        # Delete old images
+        old_images=`glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-
+        if [ ! "$old_images" = "" ]; then
+          echo $old_images | xargs -n1 glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLA
+        fi
+
         if [ "$CONTAINER_FORMAT" = "bare" ]; then
             glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "$REGION_NAME-$IMAGE_NAME" --public --container-format=$CONTAINER_FORMAT --disk-format $DISK_FORMAT < <(zcat --force "${IMAGE}")
         else
