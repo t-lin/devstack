@@ -291,6 +291,26 @@ RYU_OFP_HOST=${RYU_OFP_HOST:-127.0.0.1}
 # Ryu OFP Port
 RYU_OFP_PORT=${RYU_OFP_PORT:-6633}
 
+if is_service_enabled fv; then
+    # Assuming FlowVisor installs to /etc/usr/flowvisor directory...
+    FV_DIR=/usr/etc/flowvisor
+    if [[ ! -d $FV_DIR ]]; then
+        sudo mkdir -p $FV_DIR
+        sudo chown `whoami` $FV_DIR
+    fi
+
+    if [[ ! -f $FV_DIR/fv_config.json ]]; then
+        cp $TOP_DIR/samples/of/fv_config.json $FV_DIR/fv_config.json
+        sed -i -e 's/0\.0\.0\.0/'$HOST_IP'/g' $FV_DIR/fv_config.json
+    fi
+
+    if [[ ! -f $FV_DIR/passFile ]]; then
+        touch $FV_DIR/passFile
+        echo '' > $FV_DIR/passFile
+        echo ''
+    fi
+fi
+
 # FlowVisor Config File for Default Ryu Control
 RYU_FV_CONFIG=${RYU_FV_CONFIG:-/usr/etc/flowvisor/fv_config.json}
 # FlowVisor Control Password File
@@ -2138,8 +2158,6 @@ function get_tenant_id {
 # happen after we've started the Quantum service.
 if is_service_enabled mysql && is_service_enabled nova; then
     # create a small network
-#:<<'END'
-    #if is_service_enabled key && is_service_enabled q-svc && is_service_enabled ryu; then
     if is_service_enabled key && is_service_enabled q-svc; then
         tenantid=`get_tenant_id admin`
         $NOVA_DIR/bin/nova-manage network create --label=admin \
@@ -2153,7 +2171,7 @@ if is_service_enabled mysql && is_service_enabled nova; then
             --num_networks=1 --network_size=$FIXED_NETWORK_SIZE_DEMO \
 	    --priority=0 \
             --gateway=$FIXED_RANGE_DEMO_GATEWAY
-    elif is_service_enabled q-svc && is_service_enabled ryu; then
+    elif is_service_enabled q-svc; then
         $NOVA_DIR/bin/nova-manage network create --label=admin \
             --fixed_range_v4=$FIXED_RANGE_ADMIN --project_id=admin \
             --num_networks=1 --network_size=$FIXED_NETWORK_SIZE_ADMIN \
@@ -2165,7 +2183,6 @@ if is_service_enabled mysql && is_service_enabled nova; then
 	    --priority=0 \
             --gateway=$FIXED_RANGE_DEMO_GATEWAY
     else
-#END
        $NOVA_DIR/bin/nova-manage network create private $FIXED_RANGE 1 $FIXED_NETWORK_SIZE $NETWORK_CREATE_ARGS
     fi
 
@@ -2303,6 +2320,16 @@ fi
 
 # Start up FlowVisor
 if is_service_enabled fv; then
+    # Install FlowVisor if it hasn't been installed already
+    fv_installed=`sudo dpkg --list | grep flowvisor` || true
+
+    if [[ -z "$fv_installed" ]]; then
+        echo "Installing FlowVisor, please wait..."
+        sudo bash -c 'echo "deb http://updates.flowvisor.org/openflow/downloads/GENI/DEB unstable/binary-\$(ARCH)/" >> /etc/apt/sources.list'
+        sudo apt-get update
+        sudo apt-get -y --force-yes install flowvisor
+    fi
+
     # Start up FlowVisor and give it time to start up
     screen_it fv "cd ~ && flowvisor -l $RYU_FV_CONFIG"
     sleep 3
