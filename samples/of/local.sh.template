@@ -1,5 +1,3 @@
-
-
 if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
    local_settings=$HORIZON_DIR/openstack_dashboard/local/local_settings.py
    IFS=","

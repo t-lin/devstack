@@ -346,8 +346,13 @@ else
 
   echo "localrc generated for a compute node."
 fi
- sed -i -e 's/\${KEYSTONE_TYPE}/'$KEYSTONE_TYPE'/g' localrc
- sed -i -e 's/\${REGION_NAME}/'$REGION_NAME'/g' localrc
- sed -i -e 's/\${KEYSTONE_AUTH_HOST}/'$KEYSTONE_AUTH_HOST'/g' localrc
- cp $OF_DIR/local.sh.template local.sh
+sed -i -e 's/\${KEYSTONE_TYPE}/'$KEYSTONE_TYPE'/g' localrc
+sed -i -e 's/\${REGION_NAME}/'$REGION_NAME'/g' localrc
+sed -i -e 's/\${KEYSTONE_AUTH_HOST}/'$KEYSTONE_AUTH_HOST'/g' localrc
+
+if [[ $KEYSTONE_TYPE = "LOCAL" ]]; then
+  cp $OF_DIR/local.sh.template local.sh
+fi
+
 echo "Now run ./stack.sh"
+
