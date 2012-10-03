@@ -2225,9 +2225,9 @@ if is_service_enabled g-api; then
         esac
 
         # Delete old images
-        old_images=`glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-
+        old_images=`glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-list | grep $REGION_NAME-$IMAGE_NAME | awk '{print $2;}'`
         if [ ! "$old_images" = "" ]; then
-          echo $old_images | xargs -n1 glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLA
+          echo $old_images | xargs -n1 glance --os-region-name $REGION_NAME --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-delete || true
         fi
 
         if [ "$CONTAINER_FORMAT" = "bare" ]; then
