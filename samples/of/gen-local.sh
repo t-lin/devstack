@@ -222,11 +222,11 @@ if [[ $AGENT == 0 ]]; then
   #Load default Images to local API
   DEF_IMAGE=y
   while true; do
-    read -p "Do you want to load default images?(y/n)" yn
+    read -p "Do you want to load default images?([y]/n)" yn
     case $yn in
         [Nn]* ) DEF_IMAGE=n;break;;
         [Yy]* ) DEF_IMAGE=y;break;;
-        * ) echo "Please answer yes or no.";;
+        * ) break;;
     esac
   done
 
@@ -239,9 +239,14 @@ echo "Would you like to use OpenFlow? ([n]/y)"
 read USE_OF
 
 Q_PLUGIN=openvswitch
-if [[ "$USE_OF" == "y" ]]; then
+if [[ "$USE_OF" == "y" || "$USE_OF" == "Y" ]]; then
   echo "This version supports only Ryu."
+  echo ''
   Q_PLUGIN=ryu
+  
+  if [[ $AGENT == 0 ]]; then
+    read -p "Do you want to install FlowVisor? ([n]/y)" FV_ENABLED
+  fi
 fi
 
 if [[ $AGENT == 0 ]]; then
@@ -264,12 +269,24 @@ if [[ $AGENT == 0 ]]; then
   fi
 
   cp $OF_DIR/ctrl-localrc localrc
-  if [[ $USE_OF == "y" ]]; then
+  if [[ $USE_OF == "y" || "$USE_OF" == "Y" ]]; then
     sed -i -e 's/RYU_ENABLED_//g' localrc
   else
     sed -i -e 's/RYU_ENABLED_/#/g' localrc
   fi
+  
+  if [[ "$FV_ENABLED" == "y" || "$FV_ENABLED" == "Y" ]]; then
+    sed -i -e 's/FV_ENABLED_//g' localrc
+    
+    # Change Ryu OFP port so it doesn't conflict with FV's OFP port
+    sed -i -e 's/6633/6634/g' localrc
 
+    echo "Note: If you want to use the 'fvctl' CLI tool native to FlowVisor, it is recommended you add an alias to .bashrc:"
+    echo "    alias fvctl='fvctl --passwd-file=/usr/etc/flowvisor/passFile --url=https://localhost:8085'"
+  else
+    sed -i -e 's/FV_ENABLED_/#/g' localrc
+  fi
+  
   if [[ $GLANCE_REGISTRY_ENABLED == "true" ]]; then
     sed -i -e 's/GLANCE_REGISTRY_ENABLED_//g' localrc
     if [[ $GLANCE_REGISTRY_AUTH_HOST ]]; then
