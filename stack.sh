@@ -1926,6 +1926,11 @@ if is_service_enabled n-api; then
     fi
 fi
 
+FIXED_RANGE_ADMIN=${FIXED_RANGE_ADMIN:-10.2.0.0/24}
+FIXED_RANGE_ADMIN_GATEWAY=${FIXED_RANGE_ADMIN_GATEWAY:-10.2.0.1}
+FIXED_RANGE_DEMO=${FIXED_RANGE_DEMO:-10.2.1.0/24}
+FIXED_RANGE_DEMO_GATEWAY=${FIXED_RANGE_DEMO_GATEWAY:-10.2.1.1}
+
 if is_service_enabled q-svc; then
     echo_summary "Starting Quantum"
     # Start the Quantum service
@@ -1945,27 +1950,39 @@ if is_service_enabled q-svc; then
     # Since quantum command is executed in admin context at this point,
     # ``--tenant_id`` needs to be specified.
     NET_ID=$(quantum net-create --tenant_id $TENANT_ID net1 | grep ' id ' | get_field 2)
-    SUBNET_ID=$(quantum subnet-create --tenant_id $TENANT_ID --ip_version 4 --gateway $NETWORK_GATEWAY $NET_ID $FIXED_RANGE | grep ' id ' | get_field 2)
+    SUBNET_ID=$(quantum subnet-create --tenant_id $TENANT_ID --ip_version 4 --gateway $FIXED_RANGE_DEMO_GATEWAY $NET_ID $FIXED_RANGE_DEMO | grep ' id ' | get_field 2)
     if is_service_enabled q-l3; then
         # Create a router, and add the private subnet as one of its interfaces
-        ROUTER_ID=$(quantum router-create --tenant_id $TENANT_ID router1 | grep ' id ' | get_field 2)
+        ROUTER_ID=$(quantum router-create router1 | grep ' id ' | get_field 2)
         quantum router-interface-add $ROUTER_ID $SUBNET_ID
         # Create an external network, and a subnet. Configure the external network as router gw
         EXT_NET_ID=$(quantum net-create ext_net -- --router:external=True | grep ' id ' | get_field 2)
         EXT_GW_IP=$(quantum subnet-create --ip_version 4 $EXT_NET_ID $FLOATING_RANGE -- --enable_dhcp=False | grep 'gateway_ip' | get_field 2)
         quantum router-gateway-set $ROUTER_ID $EXT_NET_ID
-        if [[ "$Q_PLUGIN" = "openvswitch" ]] && [[ "$Q_USE_NAMESPACE" = "True" ]]; then
+        if [[ "$Q_PLUGIN" = "openvswitch" || "$Q_PLUGIN" = "ryu" ]] && [[ "$Q_USE_NAMESPACE" = "True" ]]; then
             CIDR_LEN=${FLOATING_RANGE#*/}
             sudo ip addr add $EXT_GW_IP/$CIDR_LEN dev $PUBLIC_BRIDGE
             sudo ip link set $PUBLIC_BRIDGE up
             ROUTER_GW_IP=`quantum port-list -c fixed_ips -c device_owner | grep router_gateway | awk -F '"' '{ print $8; }'`
-            sudo route add -net $FIXED_RANGE gw $ROUTER_GW_IP
+            sudo route add -net $FIXED_RANGE_DEMO gw $ROUTER_GW_IP
         fi
         if [[ "$Q_USE_NAMESPACE" == "False" ]]; then
             # Explicitly set router id in l3 agent configuration
             iniset $Q_L3_CONF_FILE DEFAULT router_id $ROUTER_ID
         fi
-   fi
+    fi
+
+    # Create for admin
+    NET_ID=$(quantum net-create admin-net | grep ' id ' | get_field 2)
+    SUBNET_ID=$(quantum subnet-create --ip_version 4 --gateway $FIXED_RANGE_ADMIN_GATEWAY $NET_ID $FIXED_RANGE_ADMIN | grep ' id ' | get_field 2)
+    if is_service_enabled q-l3; then
+        # Add the private subnet as one of the router's interfaces
+        quantum router-interface-add $ROUTER_ID $SUBNET_ID
+
+        if [[ "$Q_PLUGIN" = "openvswitch" || "$Q_PLUGIN" = "ryu" ]] && [[ "$Q_USE_NAMESPACE" = "True" ]]; then
+            sudo route add -net $FIXED_RANGE_ADMIN gw $ROUTER_GW_IP
+        fi
+    fi
 
 elif is_service_enabled mysql && is_service_enabled nova; then
     # Create a small network
