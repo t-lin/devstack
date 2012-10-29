@@ -1,0 +1,21 @@
+#!/bin/bash
+# One arguments expected:
+#    1: Name of the OVS device
+
+if [[ -n "$1" ]]; then
+    OVS_NAME=$1
+else
+    echo "Must specify first parameter (Name of the OVS device)"
+    ERR=1
+fi
+
+if [[ -z "$ERR" ]]; then
+   PORT_LIST=`sudo ovs-vsctl list-ports $OVS_NAME`
+
+   for PORT in $PORT_LIST; do
+      PORT_INFO=`sudo ovs-vsctl get Interface $PORT external_ids`
+      PORT_NUM=`sudo ovs-ofctl show $OVS_NAME | grep $PORT | cut -d '(' -f 1 | sed 's/ //g'`
+      echo "$PORT_NUM : $PORT : $PORT_INFO"
+   done
+fi
+

@@ -1124,7 +1124,20 @@ if is_service_enabled q-svc; then
 --ofp_listen_host=$RYU_OFP_HOST
 --ofp_tcp_listen_port=$RYU_OFP_PORT
 EOF
-        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_demorunner"
+        
+        # Randomly load switch or hub if file doesn't already exist
+        if [[ ! -f /opt/stack/ryu/ryu/demo/demo_app.py ]]; then
+            RANDOM_APP=$((RANDOM%2))
+            if [[ $RANDOM_APP = 0 ]]; then
+                sudo cp $TOP_DIR/samples/demo_app_switch.py /opt/stack/ryu/ryu/demo/demo_app.py
+            else
+                sudo cp $TOP_DIR/samples/demo_app_hub.py /opt/stack/ryu/ryu/demo/demo_app.py
+            fi
+        fi
+        
+        #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_demorunner"
+        #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_isolation"
+        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_switch"
         sleep 15
     fi
 
@@ -1553,7 +1566,7 @@ if is_service_enabled swift; then
 
     iniset ${SWIFT_CONFIG_PROXY_SERVER} app:proxy-server account_autocreate true
 
-    cat <<EOF>>${SWIFT_CONFIG_PROXY_SERVER}
+    cat <<EOF >>${SWIFT_CONFIG_PROXY_SERVER}
 
 [filter:keystone]
 paste.filter_factory = keystone.middleware.swift_auth:filter_factory
@@ -2229,6 +2242,7 @@ echo ""
 echo ""
 echo ""
 
+echo "Finishing stack using 2012 10.$RANDOM_APP"
 # If you installed Horizon on this server you should be able
 # to access the site using your browser.
 if is_service_enabled horizon; then
