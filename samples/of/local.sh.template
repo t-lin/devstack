@@ -9,3 +9,4 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
    sudo sh -c "echo \" ]\" >> $local_settings"
    sudo service apache2 restart
 fi
+sudo pip install -e git+https://github.com/mfaraji/django_openstack_auth#egg=openstack_auth
