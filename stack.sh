@@ -1041,7 +1041,7 @@ screen -r $SCREEN_NAME -X hardstatus alwayslastline "$SCREEN_HARDSTATUS"
 # Keystone
 # --------
 
-if is_service_enabled key; then
+if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
     echo_summary "Starting Keystone"
     configure_keystone
     init_keystone
@@ -1051,7 +1051,7 @@ if is_service_enabled key; then
       echo "keystone did not start"
       exit 1
     fi
-
+fi
     # ``keystone_data.sh`` creates services, admin and demo users, and roles.
     SERVICE_ENDPOINT=$KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_AUTH_HOST:$KEYSTONE_AUTH_PORT/v2.0
 
@@ -1066,7 +1066,6 @@ if is_service_enabled key; then
     export OS_TENANT_NAME=admin
     export OS_USERNAME=admin
     export OS_PASSWORD=$ADMIN_PASSWORD
-fi
 
 
 # Horizon
@@ -2101,12 +2100,12 @@ echo ""
 # If you installed Horizon on this server you should be able
 # to access the site using your browser.
 if is_service_enabled horizon; then
-    echo "Horizon is now available at http://$SERVICE_HOST/"
+    echo "Horizon is now available at http://$KEYSTONE_SERVICE_HOST/"
 fi
 
 # If Keystone is present you can point ``nova`` cli to this server
 if is_service_enabled key; then
-    echo "Keystone is serving at $KEYSTONE_AUTH_PROTOCOL://$SERVICE_HOST:$KEYSTONE_API_PORT/v2.0/"
+    echo "Keystone is serving at $KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_API_PORT/v2.0/"
     echo "Examples on using novaclient command line is in exercise.sh"
     echo "The default users are: admin and demo"
     echo "The password: $ADMIN_PASSWORD"

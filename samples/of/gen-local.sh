@@ -4,7 +4,7 @@
 # supports the following options:
 #   -a) Creates loclrc for compute nodes.
 
-ENABLED_SERVICES_CONTROL="n-api,n-crt,n-obj,n-cpu,n-net,n-vol,n-sch,n-novnc,n-xvnc,n-cauth,mysql,rabbit,quantum,q-svc,q-agt"
+ENABLED_SERVICES_CONTROL="key,n-api,n-crt,n-obj,n-cpu,n-net,n-vol,n-sch,n-novnc,n-xvnc,n-cauth,mysql,rabbit,quantum,q-svc,q-agt"
 set -e
 
 function interfaces {
@@ -120,7 +120,7 @@ if [[ $AGENT == 0 ]]; then
    else
       REGION_NAME=$reg
    fi
-   ENABLED_SERVICES_CONTROL+=",horizon,key"
+   ENABLED_SERVICES_CONTROL+=",horizon"
    read -p "Please Enter the rest of regions in comma separated format: " regs
    REGIONS=$REGION_NAME","$regs
   fi
