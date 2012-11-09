@@ -1066,6 +1066,7 @@ fi
     export OS_TENANT_NAME=admin
     export OS_USERNAME=admin
     export OS_PASSWORD=$ADMIN_PASSWORD
+    export OS_REGION_NAME=$REGION_NAME
 
 
 # Horizon
@@ -1134,6 +1135,7 @@ if is_service_enabled g-reg; then
         iniset $GLANCE_API_CONF DEFAULT swift_store_auth_address $KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_SERVICE_PORT/v2.0/
         iniset $GLANCE_API_CONF DEFAULT swift_store_user $SERVICE_TENANT_NAME:glance
         iniset $GLANCE_API_CONF DEFAULT swift_store_key $SERVICE_PASSWORD
+        iniset $GLANCE_API_CONF DEFAULT swift_store_region $REGION_NAME
         iniset $GLANCE_API_CONF DEFAULT swift_store_create_container_on_put True
     fi
 fi
@@ -1807,6 +1809,7 @@ if is_service_enabled quantum; then
     add_nova_opt "quantum_admin_username=$Q_ADMIN_USERNAME"
     add_nova_opt "quantum_admin_password=$SERVICE_PASSWORD"
     add_nova_opt "quantum_admin_auth_url=$KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_AUTH_PORT/v2.0"
+    add_nova_opt "quantum_admin_auth_region=$REGION_NAME"
     add_nova_opt "quantum_auth_strategy=$Q_AUTH_STRATEGY"
     add_nova_opt "quantum_admin_tenant_name=$SERVICE_TENANT_NAME"
     add_nova_opt "quantum_url=http://$Q_HOST:$Q_PORT"
@@ -2062,7 +2065,7 @@ fi
 #  * **oneiric**: http://uec-images.ubuntu.com/oneiric/current/oneiric-server-cloudimg-amd64.tar.gz
 #  * **precise**: http://uec-images.ubuntu.com/precise/current/precise-server-cloudimg-amd64.tar.gz
 
-if is_service_enabled g-reg; then
+if is_service_enabled g-api; then
     echo_summary "Uploading images"
     TOKEN=$(keystone  token-get | grep ' id ' | get_field 2)
 

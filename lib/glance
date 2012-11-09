@@ -69,7 +69,7 @@ function configure_glanceclient() {
 }
 
 # configure_glance() - Set config files, create data dirs, etc
-function configure_glance_old() {
+function configure_glance() {
     setup_develop $GLANCE_DIR
 
     if [[ ! -d $GLANCE_CONF_DIR ]]; then
@@ -99,7 +99,7 @@ function configure_glance_old() {
     iniset $GLANCE_API_CONF DEFAULT use_syslog $SYSLOG
     iniset $GLANCE_API_CONF DEFAULT filesystem_store_datadir $GLANCE_IMAGE_DIR/
     iniset $GLANCE_API_CONF DEFAULT image_cache_dir $GLANCE_CACHE_DIR/
-    iniset $GLANCE_API_CONF paste_deploy flavor keystone+cachemanagement
+    iniset $GLANCE_API_CONF paste_deploy flavor $GLANCE_API_FLAVOR
     iniset $GLANCE_API_CONF keystone_authtoken auth_host $KEYSTONE_AUTH_HOST
     iniset $GLANCE_API_CONF keystone_authtoken auth_port $KEYSTONE_AUTH_PORT
     iniset $GLANCE_API_CONF keystone_authtoken auth_protocol $KEYSTONE_AUTH_PROTOCOL
@@ -107,6 +107,10 @@ function configure_glance_old() {
     iniset $GLANCE_API_CONF keystone_authtoken admin_tenant_name $SERVICE_TENANT_NAME
     iniset $GLANCE_API_CONF keystone_authtoken admin_user glance
     iniset $GLANCE_API_CONF keystone_authtoken admin_password $SERVICE_PASSWORD
+    iniset $GLANCE_API_CONF DEFAULT registry_host $GLANCE_REGISTRY_HOST
+    iniset $GLANCE_API_CONF DEFAULT registry_port $GLANCE_REGISTRY_PORT
+    iniset $GLANCE_API_CONF DEFAULT image_cache_max_size $GLANCE_CACHE_MAX_SIZE
+
     if is_service_enabled qpid; then
         iniset $GLANCE_API_CONF DEFAULT notifier_strategy qpid
     elif [ -n "$RABBIT_HOST" ] &&  [ -n "$RABBIT_PASSWORD" ]; then
@@ -116,6 +120,14 @@ function configure_glance_old() {
     fi
 
     cp -p $GLANCE_DIR/etc/glance-registry-paste.ini $GLANCE_REGISTRY_PASTE_INI
+
+    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_host $GLANCE_REGISTRY_AUTH_HOST
+    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_port $GLANCE_REGISTRY_AUTH_PORT
+    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_protocol $KEYSTONE_AUTH_PROTOCOL
+    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_uri $KEYSTONE_SERVICE_PROTOCOL://$GLANCE_REGISTRY_AUTH_HOST:$KEYSTONE_SERVICE_PORT/
+    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken admin_tenant_name $SERVICE_TENANT_NAME
+    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken admin_user glance
+    iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken admin_password $SERVICE_PASSWORD
 
     cp -p $GLANCE_DIR/etc/glance-api-paste.ini $GLANCE_API_PASTE_INI
 
@@ -135,6 +147,13 @@ function configure_glance_old() {
     iniset $GLANCE_CACHE_CONF DEFAULT admin_password $SERVICE_PASSWORD
 
     cp -p $GLANCE_DIR/etc/policy.json $GLANCE_POLICY_JSON
+    if [ "$GLANCE_API_FLAVOR" == "keystone+cachemanagement" ]; then
+        echo "PATH=""$PATH" > cronTemp 
+        echo "*""$GLANCE_CACHE_PRUNER_INTERVAL"" * * * * glance-cache-pruner --config-file=""$GLANCE_API_CONF" >> cronTemp
+        echo "*""$GLANCE_CACHE_CLEANER_INTERVAL"" * * * * glance-cache-cleaner --config-file=""$GLANCE_API_CONF" >> cronTemp
+	sudo crontab cronTemp
+        rm cronTemp
+    fi
 
 }
 
@@ -190,7 +209,7 @@ function stop_glance() {
     screen -S $SCREEN_NAME -p g-reg -X kill
 }
 
-function configure_glance() {
+function configure_glance_new() {
     if is_service_enabled g-reg; then
         GLANCE_IMAGE_DIR=$DEST/glance/images
         # Delete existing images
