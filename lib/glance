@@ -69,7 +69,7 @@ function configure_glanceclient() {
 }
 
 # configure_glance() - Set config files, create data dirs, etc
-function configure_glance() {
+function configure_glance_old() {
     setup_develop $GLANCE_DIR
 
     if [[ ! -d $GLANCE_CONF_DIR ]]; then
@@ -167,12 +167,19 @@ function install_glance() {
 
 # start_glance() - Start running processes, including screen
 function start_glance() {
-    screen_it g-reg "cd $GLANCE_DIR; $GLANCE_BIN_DIR/glance-registry --config-file=$GLANCE_CONF_DIR/glance-registry.conf"
-    screen_it g-api "cd $GLANCE_DIR; $GLANCE_BIN_DIR/glance-api --config-file=$GLANCE_CONF_DIR/glance-api.conf"
-    echo "Waiting for g-api ($GLANCE_HOSTPORT) to start..."
-    if ! timeout $SERVICE_TIMEOUT sh -c "while ! http_proxy= wget -q -O- http://$GLANCE_HOSTPORT; do sleep 1; done"; then
-      echo "g-api did not start"
-      exit 1
+    # launch the glance registry service
+    if is_service_enabled g-reg; then
+       screen_it g-reg "cd $GLANCE_DIR; $GLANCE_BIN_DIR/glance-registry --config-file=$GLANCE_CONF_DIR/glance-registry.conf"
+    fi
+
+    # launch the glance api and wait for it to answer before continuing
+    if is_service_enabled g-api; then
+       screen_it g-api "cd $GLANCE_DIR; $GLANCE_BIN_DIR/glance-api --config-file=$GLANCE_CONF_DIR/glance-api.conf"
+       echo "Waiting for g-api ($GLANCE_HOSTPORT) to start..."
+       if ! timeout $SERVICE_TIMEOUT sh -c "while ! http_proxy= wget -q -O- http://$GLANCE_HOSTPORT; do sleep 1; done"; then
+          echo "g-api did not start"
+          exit 1
+       fi
     fi
 }
 
@@ -181,6 +188,92 @@ function stop_glance() {
     # Kill the Glance screen windows
     screen -S $SCREEN_NAME -p g-api -X kill
     screen -S $SCREEN_NAME -p g-reg -X kill
+}
+
+function configure_glance() {
+    if is_service_enabled g-reg; then
+        GLANCE_IMAGE_DIR=$DEST/glance/images
+        # Delete existing images
+        rm -rf $GLANCE_IMAGE_DIR
+
+        # Use local glance directories
+        mkdir -p $GLANCE_IMAGE_DIR
+
+        # Copy over our glance configurations and update them
+        GLANCE_REGISTRY_CONF=$GLANCE_CONF_DIR/glance-registry.conf
+        cp $GLANCE_DIR/etc/glance-registry.conf $GLANCE_REGISTRY_CONF
+        iniset $GLANCE_REGISTRY_CONF DEFAULT debug True
+        inicomment $GLANCE_REGISTRY_CONF DEFAULT log_file
+        iniset $GLANCE_REGISTRY_CONF DEFAULT sql_connection $BASE_SQL_CONN/glance?charset=utf8
+        iniset $GLANCE_REGISTRY_CONF DEFAULT use_syslog $SYSLOG
+        iniset $GLANCE_REGISTRY_CONF paste_deploy flavor keystone
+
+        if [ -z "$GLANCE_REGISTRY_AUTH_HOST" ]; then
+           GLANCE_REGISTRY_AUTH_HOST = $KEYSTONE_AUTH_HOST
+        fi
+        if [ -z "$GLANCE_REGISTRY_AUTH_PORT" ]; then
+           GLANCE_REGISTRY_AUTH_PORT = $KEYSTONE_AUTH_PORT
+        fi
+
+        GLANCE_REGISTRY_PASTE_INI=$GLANCE_CONF_DIR/glance-registry-paste.ini
+        cp $GLANCE_DIR/etc/glance-registry-paste.ini $GLANCE_REGISTRY_PASTE_INI
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_host $GLANCE_REGISTRY_AUTH_HOST
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_port $GLANCE_REGISTRY_AUTH_PORT
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_protocol $KEYSTONE_AUTH_PROTOCOL
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken auth_uri $KEYSTONE_SERVICE_PROTOCOL://$GLANCE_REGISTRY_AUTH_HOST:$KEYSTONE_SERVICE_PORT/
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken admin_tenant_name $SERVICE_TENANT_NAME
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken admin_user glance
+        iniset $GLANCE_REGISTRY_PASTE_INI filter:authtoken admin_password $SERVICE_PASSWORD
+    fi
+    if is_service_enabled g-api; then
+        GLANCE_API_CONF=$GLANCE_CONF_DIR/glance-api.conf
+        cp $GLANCE_DIR/etc/glance-api.conf $GLANCE_API_CONF
+        iniset $GLANCE_API_CONF DEFAULT debug True
+        inicomment $GLANCE_API_CONF DEFAULT log_file
+        iniset $GLANCE_API_CONF DEFAULT sql_connection $BASE_SQL_CONN/glance?charset=utf8
+        iniset $GLANCE_API_CONF DEFAULT use_syslog $SYSLOG
+        iniset $GLANCE_API_CONF DEFAULT filesystem_store_datadir $GLANCE_IMAGE_DIR/
+        iniset $GLANCE_API_CONF paste_deploy flavor $GLANCE_API_FLAVOR
+        iniset $GLANCE_API_CONF DEFAULT registry_host $GLANCE_REGISTRY_HOST
+        iniset $GLANCE_API_CONF DEFAULT registry_port $GLANCE_REGISTRY_PORT
+        iniset $GLANCE_API_CONF DEFAULT image_cache_max_size $GLANCE_CACHE_MAX_SIZE
+        
+        if [ "$GLANCE_API_FLAVOR" == "keystone+cachemanagement" ]; then
+           echo "PATH=""$PATH" > cronTemp
+           echo "*""$GLANCE_CACHE_PRUNER_INTERVAL"" * * * * glance-cache-pruner --config-file=""$GLANCE_API_CONF" >> cronTemp
+           echo "*""$GLANCE_CACHE_CLEANER_INTERVAL"" * * * * glance-cache-cleaner --config-file=""$GLANCE_API_CONF" >> cronTemp
+           crontab cronTemp
+           rm cronTemp
+        fi
+        if [ -z "$GLANCE_API_AUTH_HOST" ]; then
+           GLANCE_API_AUTH_HOST=$KEYSTONE_AUTH_HOST
+        fi
+        if [ -z "$GLANCE_API_AUTH_PORT" ]; then
+           GLANCE_API_AUTH_PORT=$KEYSTONE_AUTH_PORT
+        fi
+
+        # Store the images in swift if enabled.
+        if is_service_enabled swift; then
+            iniset $GLANCE_API_CONF DEFAULT default_store swift
+            iniset $GLANCE_API_CONF DEFAULT swift_store_auth_address $KEYSTONE_SERVICE_PROTOCOL://$GLANCE_API_AUTH_HOST:$KEYSTONE_SERVICE_PORT/v2.0/
+            iniset $GLANCE_API_CONF DEFAULT swift_store_user $SERVICE_TENANT_NAME:glance
+            iniset $GLANCE_API_CONF DEFAULT swift_store_key $SERVICE_PASSWORD
+            iniset $GLANCE_API_CONF DEFAULT swift_store_region $REGION_NAME
+            iniset $GLANCE_API_CONF DEFAULT swift_store_create_container_on_put True
+        fi
+        GLANCE_API_PASTE_INI=$GLANCE_CONF_DIR/glance-api-paste.ini
+        cp $GLANCE_DIR/etc/glance-api-paste.ini $GLANCE_API_PASTE_INI
+        iniset $GLANCE_API_PASTE_INI filter:authtoken auth_host $GLANCE_API_AUTH_HOST
+        iniset $GLANCE_API_PASTE_INI filter:authtoken auth_port $GLANCE_API_AUTH_PORT
+        iniset $GLANCE_API_PASTE_INI filter:authtoken auth_protocol $KEYSTONE_AUTH_PROTOCOL
+        iniset $GLANCE_API_PASTE_INI filter:authtoken auth_uri $KEYSTONE_SERVICE_PROTOCOL://$GLANCE_API_AUTH_HOST:$KEYSTONE_SERVICE_PORT/
+        iniset $GLANCE_API_PASTE_INI filter:authtoken admin_tenant_name $SERVICE_TENANT_NAME
+        iniset $GLANCE_API_PASTE_INI filter:authtoken admin_user glance
+        iniset $GLANCE_API_PASTE_INI filter:authtoken admin_password $SERVICE_PASSWORD
+    fi
+
+    GLANCE_POLICY_JSON=$GLANCE_CONF_DIR/policy.json
+    cp $GLANCE_DIR/etc/policy.json $GLANCE_POLICY_JSON
 }
 
 # Restore xtrace

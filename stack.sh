@@ -1210,6 +1210,11 @@ if is_service_enabled quantum; then
     # Example: OVS_ENABLE_TUNNELING=True
     OVS_ENABLE_TUNNELING=${OVS_ENABLE_TUNNELING:-$ENABLE_TENANT_TUNNELS}
 
+    # Quantum clean netns
+    for net in `sudo ip netns list | grep q`; do
+        sudo ip netns delete $net
+    done
+
     # Put config files in ``/etc/quantum`` for everyone to find
     if [[ ! -d /etc/quantum ]]; then
         sudo mkdir -p /etc/quantum
@@ -1284,6 +1289,12 @@ if is_service_enabled q-svc; then
 
     # Update either configuration file with plugin
     iniset $Q_CONF_FILE DEFAULT core_plugin $Q_PLUGIN_CLASS
+
+    # set dns name server
+    if [[ $DNS_NAME_SERVER ]]; then
+       echo "Setting DNS name server in quatum config file to $DNS_NAME_SERVER"
+       #iniset $Q_CONF_FILE DEFAULT dnsmasq_dns_server $DNS_NAME_SERVER
+    fi
 
     iniset $Q_CONF_FILE DEFAULT auth_strategy $Q_AUTH_STRATEGY
     quantum_setup_keystone $Q_API_PASTE_FILE filter:authtoken
@@ -1435,7 +1446,7 @@ if is_service_enabled q-dhcp; then
     # Update config w/rootwrap
     iniset $Q_DHCP_CONF_FILE DEFAULT root_helper "$Q_RR_COMMAND"
 
-    if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
+    if [[ "$Q_PLUGIN" = "openvswitch"  || "$Q_PLUGIN" = "ryu" ]]; then
         iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.OVSInterfaceDriver
     elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
         iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.BridgeInterfaceDriver
@@ -1453,7 +1464,7 @@ if is_service_enabled q-l3; then
     # Set verbose
     iniset $Q_L3_CONF_FILE DEFAULT verbose True
     # Set debug
-    iniset $Q_L3_CONF_FILE DEFAULT debug True
+    #iniset $Q_L3_CONF_FILE DEFAULT debug True
 
     iniset $Q_L3_CONF_FILE DEFAULT metadata_ip $Q_META_DATA_IP
     iniset $Q_L3_CONF_FILE DEFAULT use_namespaces $Q_USE_NAMESPACE
@@ -1461,7 +1472,7 @@ if is_service_enabled q-l3; then
     iniset $Q_L3_CONF_FILE DEFAULT root_helper "$Q_RR_COMMAND"
 
     quantum_setup_keystone $Q_L3_CONF_FILE DEFAULT set_auth_url
-    if [[ "$Q_PLUGIN" == "openvswitch" ]]; then
+    if [[ "$Q_PLUGIN" == "openvswitch"  || "$Q_PLUGIN" = "ryu" ]]; then
         iniset $Q_L3_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.OVSInterfaceDriver
         iniset $Q_L3_CONF_FILE DEFAULT external_network_bridge $PUBLIC_BRIDGE
         # Set up external bridge
@@ -1760,6 +1771,9 @@ EOF
         sudo systemctl start xinetd.service
     fi
 
+   #change webob to version 1.0.8
+   sudo pip install webob==1.0.8
+
    # First spawn all the swift services then kill the
    # proxy service so we can run it in foreground in screen.
    # ``swift-init ... {stop|restart}`` exits with '1' if no servers are running,
@@ -1949,7 +1963,7 @@ if is_service_enabled q-svc; then
     # Since quantum command is executed in admin context at this point,
     # ``--tenant_id`` needs to be specified.
     NET_ID=$(quantum net-create --tenant_id $TENANT_ID net1 | grep ' id ' | get_field 2)
-    SUBNET_ID=$(quantum subnet-create --tenant_id $TENANT_ID --ip_version 4 --gateway $FIXED_RANGE_DEMO_GATEWAY $NET_ID $FIXED_RANGE_DEMO | grep ' id ' | get_field 2)
+    SUBNET_ID=$(quantum subnet-create --tenant_id $TENANT_ID --ip_version 4 --gateway $FIXED_RANGE_DEMO_GATEWAY $NET_ID $FIXED_RANGE_DEMO --dns_nameservers list=true $DNS_NAME_SERVER | grep ' id ' | get_field 2)
     if is_service_enabled q-l3; then
         # Create a router, and add the private subnet as one of its interfaces
         ROUTER_ID=$(quantum router-create router1 | grep ' id ' | get_field 2)
@@ -1973,7 +1987,7 @@ if is_service_enabled q-svc; then
 
     # Create for admin
     NET_ID=$(quantum net-create admin-net | grep ' id ' | get_field 2)
-    SUBNET_ID=$(quantum subnet-create --ip_version 4 --gateway $FIXED_RANGE_ADMIN_GATEWAY $NET_ID $FIXED_RANGE_ADMIN | grep ' id ' | get_field 2)
+    SUBNET_ID=$(quantum subnet-create --ip_version 4 --gateway $FIXED_RANGE_ADMIN_GATEWAY $NET_ID $FIXED_RANGE_ADMIN --dns_nameservers list=true $DNS_NAME_SERVER | grep ' id ' | get_field 2)
     if is_service_enabled q-l3; then
         # Add the private subnet as one of the router's interfaces
         quantum router-interface-add $ROUTER_ID $SUBNET_ID
@@ -2070,7 +2084,9 @@ fi
 if [[ -x $TOP_DIR/local.sh ]]; then
     echo "Running user script $TOP_DIR/local.sh"
     SERVICE_ENDPOINT=$KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_AUTH_HOST:$KEYSTONE_API_PORT/v2.0 \
-    HORIZON_DIR=$HORIZON_DIR REGIONS=$REGIONS KEYSTONE_TYPE=$KEYSTONE_TYPE\
+    KEYSTONE_AUTH_HOST=$KEYSTONE_AUTH_HOST REGION_NAME=$REGION_NAME \
+    HORIZON_DIR=$HORIZON_DIR REGIONS=$REGIONS KEYSTONE_TYPE=$KEYSTONE_TYPE \
+    ENABLED_SERVICES=$ENABLED_SERVICES PUBLIC_BRIDGE=$PUBLIC_BRIDGE \
     $TOP_DIR/local.sh
 fi
 

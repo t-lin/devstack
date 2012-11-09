@@ -24,6 +24,14 @@ if [[ -n "$4" ]]; then
 fi
 
 
+if [[ -n "$3" ]]; then
+    OS_REGION_NAME=$3
+fi
+
+if [[ -n "$4" ]]; then
+    SERVICE_HOST=$4
+fi
+
 # Find the other rc files
 RC_DIR=$(cd $(dirname "$BASH_SOURCE") && pwd)
 
@@ -51,6 +59,8 @@ export OS_PASSWORD=${ADMIN_PASSWORD:-secrete}
 # Don't put the key into a keyring by default. Testing for development is much
 # easier with this off.
 export OS_NO_CACHE=${OS_NO_CACHE:-1}
+
+export OS_REGION_NAME=${OS_REGION_NAME:-CORE}
 
 # Set api HOST_IP endpoint.  SERVICE_HOST may also be used to specify the endpoint,
 # which is convenient for some localrc configurations.
