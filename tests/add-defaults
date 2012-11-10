@@ -3,5 +3,5 @@ nova image-list
 nova secgroup-add-rule default TCP 22 22 0.0.0.0/0
 nova secgroup-add-rule default ICMP -1 255 0.0.0.0/0
 
-nova keypair-add --pub-key ~/.ssh/id_rsa.pub key1
+nova keypair-add --pub_key ~/.ssh/id_rsa.pub key1
 nova keypair-list
