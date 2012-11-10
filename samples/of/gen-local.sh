@@ -4,7 +4,7 @@
 # supports the following options:
 #   -a) Creates loclrc for compute nodes.
 
-ENABLED_SERVICES_CONTROL="key,n-api,n-crt,n-obj,n-cpu,n-net,n-vol,n-sch,n-novnc,n-xvnc,n-cauth,mysql,rabbit,quantum,q-svc,q-agt"
+ENABLED_SERVICES_CONTROL="key,n-api,n-crt,n-obj,n-cpu,n-net,n-vol,n-sch,n-novnc,n-xvnc,n-cauth,mysql,rabbit,quantum,q-svc,q-agt,q-l3,q-dhcp"
 set -e
 
 function interfaces {
