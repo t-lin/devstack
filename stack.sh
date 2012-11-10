@@ -821,6 +821,12 @@ fi
 echo_summary "Installing Python prerequisites"
 pip_install $(get_packages $FILES/pips | sort -u)
 
+# Quantum clean netns
+if is_service_enabled quantum; then
+    for net in `sudo ip netns list | grep q`; do
+        sudo ip netns delete $net
+    done
+fi
 
 # Check Out Source
 # ----------------
@@ -1124,7 +1130,7 @@ fi
 # Glance
 # ------
 
-if is_service_enabled g-reg; then
+if is_service_enabled g-reg g-api; then
     echo_summary "Configuring Glance"
 
     init_glance
@@ -1211,11 +1217,6 @@ if is_service_enabled quantum; then
     #
     # Example: OVS_ENABLE_TUNNELING=True
     OVS_ENABLE_TUNNELING=${OVS_ENABLE_TUNNELING:-$ENABLE_TENANT_TUNNELS}
-
-    # Quantum clean netns
-    for net in `sudo ip netns list | grep q`; do
-        sudo ip netns delete $net
-    done
 
     # Put config files in ``/etc/quantum`` for everyone to find
     if [[ ! -d /etc/quantum ]]; then

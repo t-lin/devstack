@@ -4,7 +4,7 @@
 # supports the following options:
 #   -a) Creates loclrc for compute nodes.
 
-ENABLED_SERVICES_CONTROL="key,n-api,n-crt,n-obj,n-cpu,n-net,n-vol,n-sch,n-novnc,n-xvnc,n-cauth,mysql,rabbit,quantum,q-svc,q-agt"
+ENABLED_SERVICES_CONTROL="key,n-api,n-crt,n-cpu,n-vol,n-sch,n-novnc,n-xvnc,n-cauth,mysql,rabbit,quantum,q-svc,q-agt,q-l3,q-dhcp"
 set -e
 
 function interfaces {
@@ -367,9 +367,7 @@ sed -i -e 's/\${KEYSTONE_TYPE}/'$KEYSTONE_TYPE'/g' localrc
 sed -i -e 's/\${REGION_NAME}/'$REGION_NAME'/g' localrc
 sed -i -e 's/\${KEYSTONE_AUTH_HOST}/'$KEYSTONE_AUTH_HOST'/g' localrc
 
-if [[ $KEYSTONE_TYPE = "LOCAL" ]]; then
-  cp $OF_DIR/local.sh.template local.sh
-fi
+cp $OF_DIR/local.sh.template local.sh
 
 echo "Now run ./stack.sh"
 
