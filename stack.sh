@@ -821,6 +821,12 @@ fi
 echo_summary "Installing Python prerequisites"
 pip_install $(get_packages $FILES/pips | sort -u)
 
+# Quantum clean netns
+if is_service_enabled quantum; then
+    for net in `sudo ip netns list | grep q`; do
+        sudo ip netns delete $net
+    done
+fi
 
 # Check Out Source
 # ----------------
@@ -1041,7 +1047,7 @@ screen -r $SCREEN_NAME -X hardstatus alwayslastline "$SCREEN_HARDSTATUS"
 # Keystone
 # --------
 
-if is_service_enabled key; then
+if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
     echo_summary "Starting Keystone"
     configure_keystone
     init_keystone
@@ -1051,14 +1057,14 @@ if is_service_enabled key; then
       echo "keystone did not start"
       exit 1
     fi
-
+fi
     # ``keystone_data.sh`` creates services, admin and demo users, and roles.
     SERVICE_ENDPOINT=$KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_AUTH_HOST:$KEYSTONE_AUTH_PORT/v2.0
 
     ADMIN_PASSWORD=$ADMIN_PASSWORD SERVICE_TENANT_NAME=$SERVICE_TENANT_NAME SERVICE_PASSWORD=$SERVICE_PASSWORD \
     SERVICE_TOKEN=$SERVICE_TOKEN SERVICE_ENDPOINT=$SERVICE_ENDPOINT SERVICE_HOST=$SERVICE_HOST \
-    S3_SERVICE_PORT=$S3_SERVICE_PORT KEYSTONE_CATALOG_BACKEND=$KEYSTONE_CATALOG_BACKEND \
-    DEVSTACK_DIR=$TOP_DIR ENABLED_SERVICES=$ENABLED_SERVICES HEAT_API_CFN_PORT=$HEAT_API_CFN_PORT \
+    S3_SERVICE_PORT=$S3_SERVICE_PORT KEYSTONE_CATALOG_BACKEND=$KEYSTONE_CATALOG_BACKEND KEYSTONE_TYPE=$KEYSTONE_TYPE KEYSTONE_SERVICE_HOST=$KEYSTONE_SERVICE_HOST \
+    DEVSTACK_DIR=$TOP_DIR ENABLED_SERVICES=$ENABLED_SERVICES HEAT_API_CFN_PORT=$HEAT_API_CFN_PORT REGION_NAME=$REGION_NAME \
         bash -x $FILES/keystone_data.sh
 
     # Set up auth creds now that keystone is bootstrapped
@@ -1066,7 +1072,7 @@ if is_service_enabled key; then
     export OS_TENANT_NAME=admin
     export OS_USERNAME=admin
     export OS_PASSWORD=$ADMIN_PASSWORD
-fi
+    export OS_REGION_NAME=$REGION_NAME
 
 
 # Horizon
@@ -1124,7 +1130,7 @@ fi
 # Glance
 # ------
 
-if is_service_enabled g-reg; then
+if is_service_enabled g-reg g-api; then
     echo_summary "Configuring Glance"
 
     init_glance
@@ -1135,6 +1141,7 @@ if is_service_enabled g-reg; then
         iniset $GLANCE_API_CONF DEFAULT swift_store_auth_address $KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_SERVICE_PORT/v2.0/
         iniset $GLANCE_API_CONF DEFAULT swift_store_user $SERVICE_TENANT_NAME:glance
         iniset $GLANCE_API_CONF DEFAULT swift_store_key $SERVICE_PASSWORD
+        iniset $GLANCE_API_CONF DEFAULT swift_store_region $REGION_NAME
         iniset $GLANCE_API_CONF DEFAULT swift_store_create_container_on_put True
     fi
 fi
@@ -1286,6 +1293,12 @@ if is_service_enabled q-svc; then
     # Update either configuration file with plugin
     iniset $Q_CONF_FILE DEFAULT core_plugin $Q_PLUGIN_CLASS
 
+    # set dns name server
+    if [[ $DNS_NAME_SERVER ]]; then
+       echo "Setting DNS name server in quatum config file to $DNS_NAME_SERVER"
+       #iniset $Q_CONF_FILE DEFAULT dnsmasq_dns_server $DNS_NAME_SERVER
+    fi
+
     iniset $Q_CONF_FILE DEFAULT auth_strategy $Q_AUTH_STRATEGY
     quantum_setup_keystone $Q_API_PASTE_FILE filter:authtoken
 
@@ -1436,7 +1449,7 @@ if is_service_enabled q-dhcp; then
     # Update config w/rootwrap
     iniset $Q_DHCP_CONF_FILE DEFAULT root_helper "$Q_RR_COMMAND"
 
-    if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
+    if [[ "$Q_PLUGIN" = "openvswitch"  || "$Q_PLUGIN" = "ryu" ]]; then
         iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.OVSInterfaceDriver
     elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
         iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.BridgeInterfaceDriver
@@ -1457,7 +1470,7 @@ if is_service_enabled q-l3; then
     # Set verbose
     iniset $Q_L3_CONF_FILE DEFAULT verbose True
     # Set debug
-    iniset $Q_L3_CONF_FILE DEFAULT debug True
+    #iniset $Q_L3_CONF_FILE DEFAULT debug True
 
     iniset $Q_L3_CONF_FILE DEFAULT metadata_ip $Q_META_DATA_IP
     iniset $Q_L3_CONF_FILE DEFAULT use_namespaces $Q_USE_NAMESPACE
@@ -1769,6 +1782,9 @@ EOF
         sudo systemctl start xinetd.service
     fi
 
+   #change webob to version 1.0.8
+   sudo pip install webob==1.0.8
+
    # First spawn all the swift services then kill the
    # proxy service so we can run it in foreground in screen.
    # ``swift-init ... {stop|restart}`` exits with '1' if no servers are running,
@@ -1802,6 +1818,7 @@ if is_service_enabled quantum; then
     add_nova_opt "quantum_admin_username=$Q_ADMIN_USERNAME"
     add_nova_opt "quantum_admin_password=$SERVICE_PASSWORD"
     add_nova_opt "quantum_admin_auth_url=$KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_AUTH_PORT/v2.0"
+    add_nova_opt "quantum_admin_auth_region=$REGION_NAME"
     add_nova_opt "quantum_auth_strategy=$Q_AUTH_STRATEGY"
     add_nova_opt "quantum_admin_tenant_name=$SERVICE_TENANT_NAME"
     add_nova_opt "quantum_url=http://$Q_HOST:$Q_PORT"
@@ -1958,7 +1975,7 @@ if is_service_enabled q-svc; then
     # Since quantum command is executed in admin context at this point,
     # ``--tenant_id`` needs to be specified.
     NET_ID=$(quantum net-create --tenant_id $TENANT_ID demo1-net | grep ' id ' | get_field 2)
-    SUBNET_ID=$(quantum subnet-create --tenant_id $TENANT_ID --ip_version 4 --gateway $FIXED_RANGE_DEMO_GATEWAY $NET_ID $FIXED_RANGE_DEMO --dns_nameservers list=true 8.8.8.8 | grep ' id ' | get_field 2)
+    SUBNET_ID=$(quantum subnet-create --tenant_id $TENANT_ID --ip_version 4 --gateway $FIXED_RANGE_DEMO_GATEWAY $NET_ID $FIXED_RANGE_DEMO --dns_nameservers list=true $DNS_NAME_SERVER | grep ' id ' | get_field 2)
     if is_service_enabled q-l3; then
         # Create a router, and add the private subnet as one of its interfaces
         ROUTER_ID=$(quantum router-create router1 | grep ' id ' | get_field 2)
@@ -1983,20 +2000,10 @@ if is_service_enabled q-svc; then
     # Create network for demo2 tenant
     TENANT_ID=$(keystone tenant-list | grep " demo2 " | get_field 1)
     NET_ID=$(quantum net-create --tenant_id $TENANT_ID demo2-net | grep ' id ' | get_field 2)
-    SUBNET_ID=$(quantum subnet-create --tenant_id $TENANT_ID --ip_version 4 --gateway $FIXED_RANGE_DEMO2_GATEWAY $NET_ID $FIXED_RANGE_DEMO2 --dns_nameservers list=true 8.8.8.8 | grep ' id ' | get_field 2)
+    SUBNET_ID=$(quantum subnet-create --tenant_id $TENANT_ID --ip_version 4 --gateway $FIXED_RANGE_DEMO2_GATEWAY $NET_ID $FIXED_RANGE_DEMO2 --dns_nameservers list=true $DNS_NAME_SERVER | grep ' id ' | get_field 2)
     if is_service_enabled q-l3; then
-        # Create a router, and add the private subnet as one of its interfaces
-        #ROUTER_ID=$(quantum router-create router1 | grep ' id ' | get_field 2)
         quantum router-interface-add $ROUTER_ID $SUBNET_ID
-        # Create an external network, and a subnet. Configure the external network as router gw
-        #EXT_NET_ID=$(quantum net-create ext_net -- --router:external=True | grep ' id ' | get_field 2)
-        #EXT_GW_IP=$(quantum subnet-create --ip_version 4 $EXT_NET_ID $FLOATING_RANGE -- --enable_dhcp=False | grep 'gateway_ip' | get_field 2)
-        #quantum router-gateway-set $ROUTER_ID $EXT_NET_ID
         if [[ "$Q_PLUGIN" = "openvswitch" || "$Q_PLUGIN" = "ryu" ]] && [[ "$Q_USE_NAMESPACE" = "True" ]]; then
-            #CIDR_LEN=${FLOATING_RANGE#*/}
-            #sudo ip addr add $EXT_GW_IP/$CIDR_LEN dev $PUBLIC_BRIDGE
-            #sudo ip link set $PUBLIC_BRIDGE up
-            #ROUTER_GW_IP=`quantum port-list -c fixed_ips -c device_owner | grep router_gateway | awk -F '"' '{ print $8; }'`
             sudo route add -net $FIXED_RANGE_DEMO2 gw $ROUTER_GW_IP
         fi
         if [[ "$Q_USE_NAMESPACE" == "False" ]]; then
@@ -2008,7 +2015,7 @@ if is_service_enabled q-svc; then
 : << 'END'
     # Create for admin
     NET_ID=$(quantum net-create admin-net | grep ' id ' | get_field 2)
-    SUBNET_ID=$(quantum subnet-create --ip_version 4 --gateway $FIXED_RANGE_ADMIN_GATEWAY $NET_ID $FIXED_RANGE_ADMIN | grep ' id ' | get_field 2)
+    SUBNET_ID=$(quantum subnet-create --ip_version 4 --gateway $FIXED_RANGE_ADMIN_GATEWAY $NET_ID $FIXED_RANGE_ADMIN --dns_nameservers list=true $DNS_NAME_SERVER | grep ' id ' | get_field 2)
     if is_service_enabled q-l3; then
         # Add the private subnet as one of the router's interfaces
         quantum router-interface-add $ROUTER_ID $SUBNET_ID
@@ -2083,7 +2090,7 @@ fi
 #  * **oneiric**: http://uec-images.ubuntu.com/oneiric/current/oneiric-server-cloudimg-amd64.tar.gz
 #  * **precise**: http://uec-images.ubuntu.com/precise/current/precise-server-cloudimg-amd64.tar.gz
 
-if is_service_enabled g-reg; then
+if is_service_enabled g-api; then
     echo_summary "Uploading images"
     TOKEN=$(keystone  token-get | grep ' id ' | get_field 2)
 
@@ -2104,6 +2111,10 @@ fi
 # Run ``local.sh`` if it exists to perform user-managed tasks
 if [[ -x $TOP_DIR/local.sh ]]; then
     echo "Running user script $TOP_DIR/local.sh"
+    SERVICE_ENDPOINT=$KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_AUTH_HOST:$KEYSTONE_API_PORT/v2.0 \
+    KEYSTONE_AUTH_HOST=$KEYSTONE_AUTH_HOST REGION_NAME=$REGION_NAME \
+    HORIZON_DIR=$HORIZON_DIR REGIONS=$REGIONS KEYSTONE_TYPE=$KEYSTONE_TYPE \
+    ENABLED_SERVICES=$ENABLED_SERVICES PUBLIC_BRIDGE=$PUBLIC_BRIDGE \
     $TOP_DIR/local.sh
 fi
 
@@ -2133,12 +2144,12 @@ echo ""
 # If you installed Horizon on this server you should be able
 # to access the site using your browser.
 if is_service_enabled horizon; then
-    echo "Horizon is now available at http://$SERVICE_HOST/"
+    echo "Horizon is now available at http://$KEYSTONE_SERVICE_HOST/"
 fi
 
 # If Keystone is present you can point ``nova`` cli to this server
 if is_service_enabled key; then
-    echo "Keystone is serving at $KEYSTONE_AUTH_PROTOCOL://$SERVICE_HOST:$KEYSTONE_API_PORT/v2.0/"
+    echo "Keystone is serving at $KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_API_PORT/v2.0/"
     echo "Examples on using novaclient command line is in exercise.sh"
     echo "The default users are: admin and demo"
     echo "The password: $ADMIN_PASSWORD"

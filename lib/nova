@@ -166,6 +166,7 @@ function configure_nova() {
         sed -e "
             /^admin_token/i admin_tenant_name = $SERVICE_TENANT_NAME
             /admin_tenant_name/s/^.*$/admin_tenant_name = $SERVICE_TENANT_NAME/;
+            /auth_host/s/^.*$/auth_host = $KEYSTONE_SERVICE_HOST/;
             /admin_user/s/^.*$/admin_user = nova/;
             /admin_password/s/^.*$/admin_password = $SERVICE_PASSWORD/;
             s,%SERVICE_TENANT_NAME%,$SERVICE_TENANT_NAME,g;
