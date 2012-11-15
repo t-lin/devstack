@@ -45,7 +45,7 @@ source $RC_DIR/stackrc
 # term **tenant** as the entity that owns resources.  In some places references
 # still exist to the original Nova term **project** for this use.  Also,
 # **tenant_name** is prefered to **tenant_id**.
-export OS_TENANT_NAME=${OS_TENANT_NAME:-demo}
+export OS_TENANT_NAME=${OS_TENANT_NAME:-demo1}
 
 # In addition to the owning entity (tenant), nova stores the entity performing
 # the action as the **user**.
@@ -66,6 +66,7 @@ export OS_REGION_NAME=${OS_REGION_NAME:-CORE}
 # which is convenient for some localrc configurations.
 HOST_IP=${HOST_IP:-127.0.0.1}
 SERVICE_HOST=${SERVICE_HOST:-$HOST_IP}
+KEYSTONE_SERVICE_HOST=${KEYSTONE_SERVICE_HOST:-$SERVICE_HOST}
 
 # Some exercises call glance directly.  On a single-node installation, Glance
 # should be listening on HOST_IP.  If its running elsewhere, it can be set here

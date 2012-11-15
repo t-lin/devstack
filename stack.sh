@@ -1379,6 +1379,10 @@ if is_service_enabled q-agt; then
         # Setup integration bridge
         OVS_BRIDGE=${OVS_BRIDGE:-br-int}
         quantum_setup_ovs_bridge $OVS_BRIDGE
+        sudo ovs-vsctl --no-wait add-port $OVS_BRIDGE $FLAT_INTERFACE
+        sudo ifconfig $FLAT_INTERFACE up
+
+        iniset /$Q_PLUGIN_CONF_FILE OVS integration_bridge $OVS_BRIDGE
 
         # Setup agent for tunneling
         if [[ "$OVS_ENABLE_TUNNELING" = "True" ]]; then
