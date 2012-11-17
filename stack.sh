@@ -782,7 +782,7 @@ if is_service_enabled horizon; then
 fi
 
 if is_service_enabled q-agt; then
-    if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
+    if [[ "$Q_PLUGIN" = "openvswitch" || "$Q_PLUGIN" = "ryu" ]]; then
         # Install deps
         # FIXME add to files/apts/quantum, but don't install if not needed!
         if [[ "$os_PACKAGE" = "deb" ]]; then
