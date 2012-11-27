@@ -1379,6 +1379,10 @@ if is_service_enabled q-agt; then
         # Setup integration bridge
         OVS_BRIDGE=${OVS_BRIDGE:-br-int}
         quantum_setup_ovs_bridge $OVS_BRIDGE
+        sudo ovs-vsctl --no-wait add-port $OVS_BRIDGE $FLAT_INTERFACE
+        sudo ifconfig $FLAT_INTERFACE up
+
+        iniset /$Q_PLUGIN_CONF_FILE OVS integration_bridge $OVS_BRIDGE
 
         # Setup agent for tunneling
         if [[ "$OVS_ENABLE_TUNNELING" = "True" ]]; then
@@ -1453,6 +1457,9 @@ if is_service_enabled q-dhcp; then
         iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.OVSInterfaceDriver
     elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
         iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.BridgeInterfaceDriver
+    elif [[ "$Q_PLUGIN" = "ryu" ]]; then
+        iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.RyuInterfaceDriver
+        iniset $Q_DHCP_CONF_FILE DEFAULT ryu_api_host $RYU_API_HOST:$RYU_API_PORT
     fi
 fi
 
@@ -1475,8 +1482,13 @@ if is_service_enabled q-l3; then
     iniset $Q_L3_CONF_FILE DEFAULT root_helper "$Q_RR_COMMAND"
 
     quantum_setup_keystone $Q_L3_CONF_FILE DEFAULT set_auth_url
-    if [[ "$Q_PLUGIN" == "openvswitch"  || "$Q_PLUGIN" = "ryu" ]]; then
-        iniset $Q_L3_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.OVSInterfaceDriver
+    if [[ "$Q_PLUGIN" == "openvswitch" || "$Q_PLUGIN" == "ryu" ]]; then
+        if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
+            iniset $Q_L3_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.OVSInterfaceDriver
+        elif [[ "$Q_PLUGIN" = "ryu" ]]; then
+            iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.RyuInterfaceDriver
+            iniset $Q_DHCP_CONF_FILE DEFAULT ryu_api_host $RYU_API_HOST:$RYU_API_PORT
+        fi
         iniset $Q_L3_CONF_FILE DEFAULT external_network_bridge $PUBLIC_BRIDGE
         # Set up external bridge
         # Create it if it does not exist
@@ -1943,10 +1955,10 @@ if is_service_enabled n-api; then
     fi
 fi
 
-FIXED_RANGE_ADMIN=${FIXED_RANGE_ADMIN:-10.2.0.0/24}
-FIXED_RANGE_ADMIN_GATEWAY=${FIXED_RANGE_ADMIN_GATEWAY:-10.2.0.1}
-FIXED_RANGE_DEMO=${FIXED_RANGE_DEMO:-10.2.1.0/24}
-FIXED_RANGE_DEMO_GATEWAY=${FIXED_RANGE_DEMO_GATEWAY:-10.2.1.1}
+FIXED_RANGE_DEMO=${FIXED_RANGE_DEMO:-10.2.0.0/24}
+FIXED_RANGE_DEMO_GATEWAY=${FIXED_RANGE_DEMO_GATEWAY:-10.2.0.1}
+FIXED_RANGE_DEMO2=${FIXED_RANGE_DEMO2:-10.2.1.0/24}
+FIXED_RANGE_DEMO2_GATEWAY=${FIXED_RANGE_DEMO2_GATEWAY:-10.2.1.1}
 
 if is_service_enabled q-svc; then
     echo_summary "Starting Quantum"
@@ -1961,12 +1973,12 @@ if is_service_enabled q-svc; then
     # Configure Quantum elements
     # Configure internal network & subnet
 
-    TENANT_ID=$(keystone tenant-list | grep " demo " | get_field 1)
+    TENANT_ID=$(keystone tenant-list | grep " demo1 " | get_field 1)
 
     # Create a small network
     # Since quantum command is executed in admin context at this point,
     # ``--tenant_id`` needs to be specified.
-    NET_ID=$(quantum net-create --tenant_id $TENANT_ID net1 | grep ' id ' | get_field 2)
+    NET_ID=$(quantum net-create --tenant_id $TENANT_ID demo1-net | grep ' id ' | get_field 2)
     SUBNET_ID=$(quantum subnet-create --tenant_id $TENANT_ID --ip_version 4 --gateway $FIXED_RANGE_DEMO_GATEWAY $NET_ID $FIXED_RANGE_DEMO --dns_nameservers list=true $DNS_NAME_SERVER | grep ' id ' | get_field 2)
     if is_service_enabled q-l3; then
         # Create a router, and add the private subnet as one of its interfaces
@@ -1989,6 +2001,22 @@ if is_service_enabled q-svc; then
         fi
     fi
 
+    # Create network for demo2 tenant
+    TENANT_ID=$(keystone tenant-list | grep " demo2 " | get_field 1)
+    NET_ID=$(quantum net-create --tenant_id $TENANT_ID demo2-net | grep ' id ' | get_field 2)
+    SUBNET_ID=$(quantum subnet-create --tenant_id $TENANT_ID --ip_version 4 --gateway $FIXED_RANGE_DEMO2_GATEWAY $NET_ID $FIXED_RANGE_DEMO2 --dns_nameservers list=true $DNS_NAME_SERVER | grep ' id ' | get_field 2)
+    if is_service_enabled q-l3; then
+        quantum router-interface-add $ROUTER_ID $SUBNET_ID
+        if [[ "$Q_PLUGIN" = "openvswitch" || "$Q_PLUGIN" = "ryu" ]] && [[ "$Q_USE_NAMESPACE" = "True" ]]; then
+            sudo route add -net $FIXED_RANGE_DEMO2 gw $ROUTER_GW_IP
+        fi
+        if [[ "$Q_USE_NAMESPACE" == "False" ]]; then
+            # Explicitly set router id in l3 agent configuration
+            iniset $Q_L3_CONF_FILE DEFAULT router_id $ROUTER_ID
+        fi
+    fi
+
+: << 'END'
     # Create for admin
     NET_ID=$(quantum net-create admin-net | grep ' id ' | get_field 2)
     SUBNET_ID=$(quantum subnet-create --ip_version 4 --gateway $FIXED_RANGE_ADMIN_GATEWAY $NET_ID $FIXED_RANGE_ADMIN --dns_nameservers list=true $DNS_NAME_SERVER | grep ' id ' | get_field 2)
@@ -2000,7 +2028,7 @@ if is_service_enabled q-svc; then
             sudo route add -net $FIXED_RANGE_ADMIN gw $ROUTER_GW_IP
         fi
     fi
-
+END
 elif is_service_enabled mysql && is_service_enabled nova; then
     # Create a small network
     $NOVA_BIN_DIR/nova-manage network create private $FIXED_RANGE 1 $FIXED_NETWORK_SIZE $NETWORK_CREATE_ARGS
@@ -2017,7 +2045,7 @@ screen_it q-dhcp "python $AGENT_DHCP_BINARY --config-file $Q_CONF_FILE --config-
 screen_it q-l3 "python $AGENT_L3_BINARY --config-file $Q_CONF_FILE --config-file=$Q_L3_CONF_FILE"
 
 # Sleep before starting q-agt to allow time for GW and DHCP ports to come up
-sleep 5
+sleep 10
 screen_it q-agt "python $AGENT_BINARY --config-file $Q_CONF_FILE --config-file /$Q_PLUGIN_CONF_FILE"
 
 if is_service_enabled nova; then

@@ -47,7 +47,8 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
   SAVI_TENANT=$(get_id keystone tenant-create --name=savi)
   ADMIN_TENANT=$(get_id keystone tenant-create --name=admin)
   SERVICE_TENANT=$(get_id keystone tenant-create --name=$SERVICE_TENANT_NAME)
-  DEMO_TENANT=$(get_id keystone tenant-create --name=demo)
+  DEMO_TENANT=$(get_id keystone tenant-create --name=demo1)
+  DEMO_TENANT2=$(get_id keystone tenant-create --name=demo2)
   INVIS_TENANT=$(get_id keystone tenant-create --name=invisible_to_admin)
 
 
@@ -240,6 +241,7 @@ fi
   keystone user-role-add --user_id $SAVI_USER --role_id $SAVI_ROLE --tenant_id $SAVI_TENANT
   keystone user-role-add --user_id $ADMIN_USER --role_id $ADMIN_ROLE --tenant_id $ADMIN_TENANT
   keystone user-role-add --user_id $ADMIN_USER --role_id $ADMIN_ROLE --tenant_id $DEMO_TENANT
+  keystone user-role-add --user_id $ADMIN_USER --role_id $ADMIN_ROLE --tenant_id $DEMO_TENANT2
   keystone user-role-add --user_id $DEMO_USER --role_id $ANOTHER_ROLE --tenant_id $DEMO_TENANT
 
 # TODO(termie): these two might be dubious

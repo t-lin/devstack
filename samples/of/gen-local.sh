@@ -80,6 +80,16 @@ if ! interface_exists $FLAT_INT; then
   exit 1
 fi
 
+if [[ $AGENT == 0 ]]; then
+  echo "Which interface should be used to connect virtual instances to the external network? (ie, "$(interfaces)")?"
+  read EXT_NET_INT
+
+  if ! interface_exists $EXT_NET_INT; then
+    echo "There is no interface "$EXT_NET_INT
+    exit 1
+  fi
+fi
+
 HOST_IP=$(ip_address eth0)
 echo "What's the ip address of this machine? [$HOST_IP]"
 read HOST_IP_READ
@@ -325,9 +335,10 @@ if [[ $AGENT == 0 ]]; then
     sed -i -e 's/GLANCE_API_ENABLED_/*/g' localrc
   fi
 
-sed -i -e 's/\${ENABLED_SERVICES}/'$ENABLED_SERVICES_CONTROL'/g' localrc
+  sed -i -e 's/\${ENABLED_SERVICES}/'$ENABLED_SERVICES_CONTROL'/g' localrc
   sed -i -e 's/\${HOST_IP_IFACE}/'$HOST_INT'/g' localrc
   sed -i -e 's/\${FLAT_INTERFACE}/'$FLAT_INT'/g' localrc
+  sed -i -e 's/\${EXT_NET_IFACE}/'$EXT_NET_INT'/g' localrc
   sed -i -e 's/\${PUBLIC_INTERFACE}/'$PUBLIC_INT'/g' localrc
   sed -i -e 's/\${HOST_IP}/'$HOST_IP'/g' localrc
   sed -i -e 's/\${PUBLIC_SERVICE_HOST}/'$PUBLIC_IP'/g' localrc
@@ -336,10 +347,12 @@ sed -i -e 's/\${ENABLED_SERVICES}/'$ENABLED_SERVICES_CONTROL'/g' localrc
   sed -i -e 's/\${Q_PLUGIN}/'$Q_PLUGIN'/g' localrc
   sed -i -e 's/\${RYU_HOST}/'$HOST_IP'/g' localrc
   sed -i -e 's/\${SWIFT_DISK_SIZE}/'$SWIFT_DISK_SIZE'/g' localrc
-sed -i -e 's/\${REGIONS}/'$REGIONS'/g' localrc
+  sed -i -e 's/\${REGIONS}/'$REGIONS'/g' localrc
   if [ $DEF_IMAGE == "n" ]; then
     echo "IMAGE_URLS=" >> localrc
   fi
+
+  cp $OF_DIR/local.sh.template local.sh
 
   echo "localrc generated for the controller node."
 else
@@ -366,8 +379,6 @@ fi
 sed -i -e 's/\${KEYSTONE_TYPE}/'$KEYSTONE_TYPE'/g' localrc
 sed -i -e 's/\${REGION_NAME}/'$REGION_NAME'/g' localrc
 sed -i -e 's/\${KEYSTONE_AUTH_HOST}/'$KEYSTONE_AUTH_HOST'/g' localrc
-
-cp $OF_DIR/local.sh.template local.sh
 
 echo "Now run ./stack.sh"
 

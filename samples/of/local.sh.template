@@ -27,7 +27,7 @@ DEST=${DEST:-/opt/stack}
 # ``demo``)
 
 # Get OpenStack auth
-source $TOP_DIR/openrc admin demo $REGION_NAME $KEYSTONE_AUTH_HOST
+source $TOP_DIR/openrc admin demo1 $REGION_NAME $KEYSTONE_AUTH_HOST
 
 # Add first keypair found in localhost:$HOME/.ssh
 for i in $HOME/.ssh/id_rsa.pub $HOME/.ssh/id_dsa.pub; do
@@ -40,9 +40,6 @@ done
 
 # Create A Flavor
 # ---------------
-
-# Get OpenStack admin auth
-source $TOP_DIR/openrc admin demo
 
 # Name of new flavor
 # set in ``localrc`` with ``DEFAULT_INSTANCE_TYPE=m1.micro``
@@ -68,5 +65,19 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
    
   sudo pip install -e git+https://github.com/mfaraji/django_openstack_auth#egg=openstack_auth
 fi
+
 # Add tcp/22 to default security group
 source $TOP_DIR/tests/add-defaults
+
+# Remove EXT_NET_IFACE from any bridges it may be connected to
+CURR_OVS=`sudo ovs-vsctl port-to-br $EXT_NET_IFACE`
+if [[ ! -z "$CURR_OVS" ]]; then
+  sudo ovs-vsctl del-port $CURR_OVS $EXT_NET_IFACE
+fi
+
+# Add interface to public bridge and remove its IP
+sudo ifconfig $EXT_NET_IFACE up
+sudo ip addr flush dev $EXT_NET_IFACE
+
+sudo ovs-vsctl --no-wait -- --may-exist add-port $PUBLIC_BRIDGE $EXT_NET_IFACE
+
