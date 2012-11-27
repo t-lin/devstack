@@ -1365,7 +1365,8 @@ if is_service_enabled q-svc; then
 EOF
 
         #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_demorunner"
-        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_isolation"
+        #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_isolation"
+        screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.tr-edge-isolation"
         #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_switch"
         #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.configurable_device"
         sleep 5
@@ -1447,6 +1448,8 @@ if is_service_enabled q-dhcp; then
     # Set debug
     iniset $Q_DHCP_CONF_FILE DEFAULT debug True
     iniset $Q_DHCP_CONF_FILE DEFAULT use_namespaces $Q_USE_NAMESPACE
+    # Set state_path to DATA_DIR
+    iniset $Q_DHCP_CONF_FILE DEFAULT state_path $DATA_DIR/dhcp
 
     quantum_setup_keystone $Q_DHCP_CONF_FILE DEFAULT set_auth_url
 
@@ -2067,7 +2070,27 @@ if is_service_enabled ceilometer; then
     start_ceilometer
 fi
 screen_it horizon "cd $HORIZON_DIR && sudo tail -f /var/log/$APACHE_NAME/horizon_error.log"
-screen_it swift "cd $SWIFT_DIR && $SWIFT_DIR/bin/swift-proxy-server ${SWIFT_CONFIG_DIR}/proxy-server.conf -v"
+
+#switch from internal swift to another swift"
+
+if is_service_enabled n_swift; then
+   swift-init all stop
+   OS_PASSWORD=$ADMIN_PASSWORD \
+   OS_TENANT_NAME=admin \
+   OS_REGION_NAME=$REGION_NAME\
+   OS_USERNAME=admin\
+   ./swift_endpoint_change.sh $SWIFT_PUBLIC_IP $SWIFT_INTERNAL_IP
+   if is_service_enabled swift; then
+     if [[ -e ${SWIFT_DATA_DIR}/drives/images/swift.img ]]; then
+        if egrep -q ${SWIFT_DATA_DIR}/drives/sdb1 /proc/mounts; then
+            sudo umount ${SWIFT_DATA_DIR}/drives/sdb1
+            sudo rm ${SWIFT_DATA_DIR}/drives/images/swift.img
+        fi
+     fi
+   fi
+else
+   screen_it swift "cd $SWIFT_DIR && $SWIFT_DIR/bin/swift-proxy-server ${SWIFT_CONFIG_DIR}/proxy-server.conf -v"
+fi
 
 # Starting the nova-objectstore only if swift3 service is not enabled.
 # Swift will act as s3 objectstore.
@@ -2079,6 +2102,8 @@ if is_service_enabled heat; then
     echo_summary "Starting Heat"
     start_heat
 fi
+
+#switch from internal swift to another swift"
 
 
 # Install Images
@@ -2095,6 +2120,11 @@ fi
 #  * **precise**: http://uec-images.ubuntu.com/precise/current/precise-server-cloudimg-amd64.tar.gz
 
 if is_service_enabled g-api; then
+
+    #making sure glance data dir is owned by this user
+    WHOAMI=`whoami`
+    sudo chown $WHOAMI:$WHOAMI $DATA_DIR/glance -R
+
     echo_summary "Uploading images"
     TOKEN=$(keystone  token-get | grep ' id ' | get_field 2)
 
@@ -2119,6 +2149,7 @@ if [[ -x $TOP_DIR/local.sh ]]; then
     KEYSTONE_AUTH_HOST=$KEYSTONE_AUTH_HOST REGION_NAME=$REGION_NAME \
     HORIZON_DIR=$HORIZON_DIR REGIONS=$REGIONS KEYSTONE_TYPE=$KEYSTONE_TYPE \
     ENABLED_SERVICES=$ENABLED_SERVICES PUBLIC_BRIDGE=$PUBLIC_BRIDGE \
+    OS_REGION_NAME=$REGION_NAME ADMIN_PASSWORD=$ADMIN_PASSWORD\
     $TOP_DIR/local.sh
 fi
 
@@ -2156,6 +2187,7 @@ if is_service_enabled key; then
     echo "Keystone is serving at $KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_API_PORT/v2.0/"
     echo "Examples on using novaclient command line is in exercise.sh"
     echo "The default users are: admin and demo"
+    echo "The default tenants are: demo1 and demo2"
     echo "The password: $ADMIN_PASSWORD"
 fi
 
