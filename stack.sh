@@ -230,7 +230,7 @@ fi
 # Create the destination directory and ensure it is writable by the user
 sudo mkdir -p $DEST
 if [ ! -w $DEST ]; then
-    sudo chown `whoami` $DEST
+    sudo chown `whoami`:`whoami` $DEST -R
 fi
 
 # Set ``OFFLINE`` to ``True`` to configure ``stack.sh`` to run cleanly without

@@ -75,7 +75,7 @@ function configure_glance() {
     if [[ ! -d $GLANCE_CONF_DIR ]]; then
         sudo mkdir -p $GLANCE_CONF_DIR
     fi
-    sudo chown `whoami` $GLANCE_CONF_DIR
+    sudo chown `whoami`:`whomai` $GLANCE_CONF_DIR -R
 
     # Copy over our glance configurations and update them
     cp $GLANCE_DIR/etc/glance-registry.conf $GLANCE_REGISTRY_CONF
@@ -162,10 +162,12 @@ function init_glance() {
     # Delete existing images
     rm -rf $GLANCE_IMAGE_DIR
     mkdir -p $GLANCE_IMAGE_DIR
+    sudo chown `whoami`:`whomai` $GLANCE_IMAGE_DIR -R
 
     # Delete existing cache
     rm -rf $GLANCE_CACHE_DIR
     mkdir -p $GLANCE_CACHE_DIR
+    sudo chown `whoami`:`whomai` $GLANCE_CACHE_DIR -R
 
     # (re)create glance database
     mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e 'DROP DATABASE IF EXISTS glance;'
@@ -217,6 +219,7 @@ function configure_glance_new() {
 
         # Use local glance directories
         mkdir -p $GLANCE_IMAGE_DIR
+        sudo chown `whoami`:`whomai` $GLANCE_IMAGE_DIR -R
 
         # Copy over our glance configurations and update them
         GLANCE_REGISTRY_CONF=$GLANCE_CONF_DIR/glance-registry.conf
