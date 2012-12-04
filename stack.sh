@@ -351,6 +351,39 @@ RYU_OFP_HOST=${RYU_OFP_HOST:-127.0.0.1}
 # Ryu OFP Port
 RYU_OFP_PORT=${RYU_OFP_PORT:-6633}
 
+if is_service_enabled fv; then
+    # Assuming FlowVisor installs to /etc/usr/flowvisor directory...
+    FV_DIR=/usr/etc/flowvisor
+    if [[ ! -d $FV_DIR ]]; then
+        sudo mkdir -p $FV_DIR
+        sudo chown `whoami` $FV_DIR
+    fi
+
+    if [[ ! -f $FV_DIR/fv_config.json ]]; then
+        cp $TOP_DIR/samples/of/fv_config.json $FV_DIR/fv_config.json
+        sed -i -e 's/0\.0\.0\.0/'$HOST_IP'/g' $FV_DIR/fv_config.json
+    fi
+
+    if [[ ! -f $FV_DIR/passFile ]]; then
+        touch $FV_DIR/passFile
+        echo '' > $FV_DIR/passFile
+        echo ''
+    fi
+fi
+
+# FlowVisor Config File for Default Ryu Control
+RYU_FV_CONFIG=${RYU_FV_CONFIG:-/usr/etc/flowvisor/fv_config.json}
+# FlowVisor Control Password File
+RYU_FV_PASSFILE=${RYU_FV_PASSFILE:-/usr/local/etc/flowvisor/passFile}
+# FlowVisor Non-Admin Slice Default Password
+RYU_FV_SLICE_PASS=${RYU_FV_SLICE_PASS:-supersecret}
+# FlowVisor Default Slice Name
+RYU_FV_DEFAULT_SLICE=${RYU_FV_DEFAULT_SLICE:-fvadmin}
+# FlowVisor Listen Port
+RYU_FV_PORT=${RYU_FV_PORT:-6633}
+# FlowVisor API Port
+RYU_FV_API_PORT=`grep "api_webserver_port" $RYU_FV_CONFIG | cut -d "t" -f 2- | sed 's/[^0-9]//g'`
+
 # Name of the LVM volume group to use/create for iscsi volumes
 VOLUME_GROUP=${VOLUME_GROUP:-stack-volumes}
 VOLUME_NAME_PREFIX=${VOLUME_NAME_PREFIX:-volume-}
@@ -1362,6 +1395,10 @@ if is_service_enabled q-svc; then
 --wsapi_port=$RYU_API_PORT
 --ofp_listen_host=$RYU_OFP_HOST
 --ofp_tcp_listen_port=$RYU_OFP_PORT
+--fv_api_port=$RYU_FV_API_PORT
+--fv_pass_file=$RYU_FV_PASSFILE
+--fv_slice_default_pass=$RYU_FV_SLICE_PASS
+--fv_default_slice=$RYU_FV_DEFAULT_SLICE
 EOF
 
         #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_demorunner"
@@ -1413,7 +1450,11 @@ if is_service_enabled q-agt; then
         fi
         
         if [[ "$Q_PLUGIN" = "ryu" ]]; then
-            iniset /$Q_PLUGIN_CONF_FILE OVS openflow_controller $RYU_OFP_HOST:$RYU_OFP_PORT
+            if is_service_enabled fv; then
+                iniset /$Q_PLUGIN_CONF_FILE OVS openflow_controller $RYU_OFP_HOST:$RYU_FV_PORT
+            else
+                iniset /$Q_PLUGIN_CONF_FILE OVS openflow_controller $RYU_OFP_HOST:$RYU_OFP_PORT
+            fi
             iniset /$Q_PLUGIN_CONF_FILE OVS openflow_rest_api $RYU_API_HOST:$RYU_API_PORT
             AGENT_BINARY="$QUANTUM_DIR/bin/quantum-ryu-agent"
         else
@@ -2138,6 +2179,23 @@ if is_service_enabled g-api; then
     done
 fi
 
+# Start up FlowVisor
+if is_service_enabled fv; then
+    # Install FlowVisor if it hasn't been installed already
+    fv_installed=`sudo dpkg --list | grep flowvisor` || true
+
+    if [[ -z "$fv_installed" ]]; then
+        echo "Installing FlowVisor, please wait..."
+        sudo bash -c 'echo "deb http://updates.flowvisor.org/openflow/downloads/GENI/DEB/old_repo unstable/binary-\$(ARCH)/" >> /etc/apt/sources.list'
+        #sudo bash -c 'echo "deb http://updates.onlab.us/debian stable contrib" >> /etc/apt/sources.list'
+        sudo apt-get update
+        sudo apt-get -y --force-yes install flowvisor
+    fi
+
+    # Start up FlowVisor and give it time to start up
+    screen_it fv "cd ~ && sudo flowvisor -l $RYU_FV_CONFIG"
+    sleep 3
+fi
 
 # Run local script
 # ================
