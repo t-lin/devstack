@@ -1064,6 +1064,20 @@ default-storage-engine = InnoDB" $MY_CONF
     fi
 
     restart_service $MYSQL
+
+    if is_service_enabled ryu; then
+        mysql -uroot -p$MYSQL_PASSWORD -e "DROP DATABASE IF EXISTS ryu;"
+        mysql -uroot -p$MYSQL_PASSWORD -e "CREATE DATABASE IF NOT EXISTS ryu CHARACTER SET utf8;"
+
+        mysql -uroot -p$MYSQL_PASSWORD ryu -e "DROP TABLE IF EXISTS networks;"
+        mysql -uroot -p$MYSQL_PASSWORD ryu -e "CREATE TABLE networks (network_id varchar(255) DEFAULT NULL, PRIMARY KEY (network_id))"
+
+        mysql -uroot -p$MYSQL_PASSWORD ryu -e "DROP TABLE IF EXISTS ports;"
+        mysql -uroot -p$MYSQL_PASSWORD ryu -e "CREATE TABLE ports (id INT PRIMARY KEY AUTO_INCREMENT, network_id varchar(255) DEFAULT NULL, datapath_id varchar(255) DEFAULT NULL, port_num varchar(255) DEFAULT NULL)"
+
+        mysql -uroot -p$MYSQL_PASSWORD ryu -e "DROP TABLE IF EXISTS macs;"
+        mysql -uroot -p$MYSQL_PASSWORD ryu -e "CREATE TABLE macs (network_id varchar(255) DEFAULT NULL, mac_address varchar(255) DEFAULT NULL, PRIMARY KEY (mac_address))"
+    fi
 fi
 
 if [ -z "$SCREEN_HARDSTATUS" ]; then
@@ -1399,6 +1413,7 @@ if is_service_enabled q-svc; then
 --fv_pass_file=$RYU_FV_PASSFILE
 --fv_slice_default_pass=$RYU_FV_SLICE_PASS
 --fv_default_slice=$RYU_FV_DEFAULT_SLICE
+--api_db_url=$BASE_SQL_CONN/ryu?charset=utf8
 EOF
 
         #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.simple_demorunner"
@@ -1530,8 +1545,8 @@ if is_service_enabled q-l3; then
         if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
             iniset $Q_L3_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.OVSInterfaceDriver
         elif [[ "$Q_PLUGIN" = "ryu" ]]; then
-            iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.RyuInterfaceDriver
-            iniset $Q_DHCP_CONF_FILE DEFAULT ryu_api_host $RYU_API_HOST:$RYU_API_PORT
+            iniset $Q_L3_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.RyuInterfaceDriver
+            iniset $Q_L3_CONF_FILE DEFAULT ryu_api_host $RYU_API_HOST:$RYU_API_PORT
         fi
         iniset $Q_L3_CONF_FILE DEFAULT external_network_bridge $PUBLIC_BRIDGE
         # Set up external bridge

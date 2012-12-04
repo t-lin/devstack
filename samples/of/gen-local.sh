@@ -45,6 +45,14 @@ OF_DIR=`dirname $0`
 
 AGENT=0
 
+if [[ -f localrc ]]; then
+  echo "localrc already exists. Overwrite? ([y]/n)"
+  read OVERWRITE_LOCALRC
+  if [[ "$OVERWRITE_LOCALRC" == "n" || "$OVERWRITE_LOCALRC" == "N" ]]; then
+    exit 1
+  fi
+fi
+
 while getopts ":a" opt; do
   case $opt in
     a)
@@ -352,6 +360,13 @@ if [[ $AGENT == 0 ]]; then
     echo "IMAGE_URLS=" >> localrc
   fi
 
+  if [[ -f local.sh ]]; then
+    echo "local.sh already exists. Overwrite? ([y]/n)"
+    read OVERWRITE_LOCAL_SH
+    if [[ "$OVERWRITE_LOCAL_SH" == "n" || "$OVERWRITE_LOCAL_SH" == "N" ]]; then
+      exit 1
+    fi
+  fi
   cp $OF_DIR/local.sh.template local.sh
 
   echo "localrc generated for the controller node."
