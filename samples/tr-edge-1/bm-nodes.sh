@@ -1,14 +1,15 @@
 #!/bin/sh
 #HOST=`hostname -f`
 
-#BMC_HOST=bmc-tr-edge-1.savinetwork.ca
+#BMC_HOST=bmc-`hostname -f`
 #NOVA_BIN_DIR=/usr/local/bin
 #BM_CONF=/etc/nova-bm
 HOST=$BMC_HOST
 
 # Please change parameters according to your bare-metal machine
 node_id_atom=$( $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  node create --host $HOST  --cpus 1 --memory_mb=4096 --local_gb=60 --pm_address="10.10.30.6" --pm_user="a,.1.3.6.1.4.1.21728.3.2.1.1.4.0,.1.3.6.1.4.1.21728.3.2.1.1.3.0" --pm_password="savi" --terminal_port=0 --prov_mac_address=00:30:18:a2:99:cf --type=i686)
-node_id_asus=$( $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  node create --host $HOST --cpus 1 --memory_mb=16392 --local_gb=60 --pm_address="10.10.30.6" --pm_user="a,.1.3.6.1.4.1.21728.3.2.1.1.4.4,.1.3.6.1.4.1.21728.3.2.1.1.3.4" --pm_password="savi" --terminal_port=0 --prov_mac_address=10:bf:48:83:5a:cb --type=x86_64)
+node_id_nf2_1=$( $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  node create --host $HOST --cpus 1 --memory_mb=16392 --local_gb=60 --pm_address="10.10.30.6" --pm_user="a,.1.3.6.1.4.1.21728.3.2.1.1.4.4,.1.3.6.1.4.1.21728.3.2.1.1.3.4" --pm_password="savi" --terminal_port=0 --prov_mac_address=10:bf:48:83:5a:cb --type=nf2_x86_64)
+node_id_nf2_2=$( $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  node create --host $HOST --cpus 1 --memory_mb=16392 --local_gb=60 --pm_address="10.10.30.6" --pm_user="a,.1.3.6.1.4.1.21728.3.2.1.1.4.6,.1.3.6.1.4.1.21728.3.2.1.1.3.6" --pm_password="savi" --terminal_port=0 --prov_mac_address=30:85:a9:49:92:f0 --type=nf2_x86_64)
 #node_id_volume=$( $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  node create --host $HOST --cpus 1 --memory_mb=4096 --local_gb=60 --pm_address="10.10.30.6" --pm_user=".1.3.6.1.4.1.21728.3.2.1.1.4.1,.1.3.6.1.4.1.21728.3.2.1.1.3.1" --pm_password="savi" --terminal_port=0 --prov_mac_address=00:14:22:44:16:22 --type=i686)
 #node_id_cluster_1=$( $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  node create --host $HOST --cpus 4 --memory_mb=2048 --local_gb=40 --pm_address="192.168.70.31" --pm_user="b,.1.3.6.1.4.1.2.3.51.2.22.1.6.1.1.7.1,.1.3.6.1.4.1.2.3.51.2.22.1.6.1.1.8.1,.1.3.6.1.4.1.2.3.51.2.22.1.6.1.1.4.1" --pm_password="savi1" --terminal_port=0 --prov_mac_address=00:09:6B:B5:DE:10 --type=i686)
 node_id_cluster_2=$( $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  node create --host $HOST --cpus 4 --memory_mb=2048 --local_gb=40 --pm_address="192.168.70.31" --pm_user="b,.1.3.6.1.4.1.2.3.51.2.22.1.6.1.1.7.2,.1.3.6.1.4.1.2.3.51.2.22.1.6.1.1.8.2,.1.3.6.1.4.1.2.3.51.2.22.1.6.1.1.4.2" --pm_password="savi1" --terminal_port=0 --prov_mac_address=00:09:6B:B5:E0:02 --type=i686)
@@ -20,9 +21,39 @@ node_id_cluster_8=$( $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  node cr
 node_id_cluster_11=$( $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  node create --host $HOST --cpus 4 --memory_mb=2048 --local_gb=40 --pm_address="192.168.70.31" --pm_user="b,.1.3.6.1.4.1.2.3.51.2.22.1.6.1.1.7.11,.1.3.6.1.4.1.2.3.51.2.22.1.6.1.1.8.11,.1.3.6.1.4.1.2.3.51.2.22.1.6.1.1.4.11" --pm_password="savi1" --terminal_port=0 --prov_mac_address=00:09:6B:B5:DA:E6 --type=i686)
 node_id_cluster_12=$( $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  node create --host $HOST --cpus 4 --memory_mb=2048 --local_gb=40 --pm_address="192.168.70.31" --pm_user="b,.1.3.6.1.4.1.2.3.51.2.22.1.6.1.1.7.12,.1.3.6.1.4.1.2.3.51.2.22.1.6.1.1.8.12,.1.3.6.1.4.1.2.3.51.2.22.1.6.1.1.4.12" --pm_password="savi1" --terminal_port=0 --prov_mac_address=00:09:6B:B5:DF:2A --type=i686)
 
+node_id_netfpga1g=$( $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  node create --host $HOST  --cpus 1 --memory_mb=1024 --local_gb=60 --pm_address="10.10.30.6" --pm_user="a,.1.3.6.1.4.1.21728.3.2.1.1.4.3,.1.3.6.1.4.1.21728.3.2.1.1.3.3" --pm_password="savi" --terminal_port=0 --prov_mac_address=00:14:22:44:0D:C2 --type=nf1_i686)
+node_id_netfpga1g_2=$( $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  node create --host $HOST  --cpus 1 --memory_mb=1024 --local_gb=60 --pm_address="10.10.30.6" --pm_user="a,.1.3.6.1.4.1.21728.3.2.1.1.4.2,.1.3.6.1.4.1.21728.3.2.1.1.3.2" --pm_password="savi" --terminal_port=0 --prov_mac_address=00:14:22:44:0E:27 --type=nf1_i686)
+node_id_gpu_1=$( $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  node create --host $HOST --cpus 1 --memory_mb=16392 --local_gb=60 --pm_address="10.10.30.6" --pm_user="a,.1.3.6.1.4.1.21728.3.2.1.1.4.5,.1.3.6.1.4.1.21728.3.2.1.1.3.5" --pm_password="savi" --terminal_port=0 --prov_mac_address=30:85:A9:AD:6B:13 --type=gpu_x86_64)
+
 # Please change parameters according to your bare-metal machine
-$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_asus --mac_address=68:05:CA:01:39:C3 --datapath_id=010010010073 --port_no=22
+$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_nf2_2 --mac_address=68:05:CA:06:E1:FB --datapath_id=010010010073 --port_no=21
+#$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_asus --mac_address=30:85:A9:8E:0C:95 --datapath_id=010010010073 --port_no=13
+#Asus1 nf0
+$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_nf2_2 --mac_address=00:4e:46:31:30:00 --datapath_id=010010010073 --port_no=50
+#Asus1 nf1
+$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_nf2_2 --mac_address=00:4e:46:31:30:01 --datapath_id=010010010073 --port_no=51
+#Asus1 nf2
+$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_nf2_2 --mac_address=00:4e:46:31:30:02 --datapath_id=010010010073 --port_no=52
+#Asus1 nf3
+$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_nf2_2 --mac_address=00:4e:46:31:30:03 --datapath_id=010010010073 --port_no=53
+
+# Please change parameters according to your bare-metal machine
+$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_nf2_1 --mac_address=68:05:CA:01:39:C3 --datapath_id=010010010073 --port_no=22
+#$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_asus --mac_address=30:85:A9:8E:0C:95 --datapath_id=010010010073 --port_no=13
+#Asus1 nf0
+$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_nf2_1 --mac_address=00:4e:46:31:30:00 --datapath_id=010010010073 --port_no=37
+#Asus1 nf1
+$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_nf2_1 --mac_address=00:4e:46:31:30:01 --datapath_id=010010010073 --port_no=38
+#Asus1 nf2
+$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_nf2_1 --mac_address=00:4e:46:31:30:02 --datapath_id=010010010073 --port_no=39
+$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_nf2_1 --mac_address=00:4e:46:31:30:03 --datapath_id=010010010073 --port_no=40
+#Asus1 nf3
 $NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_atom --mac_address=00:30:18:a2:99:d0 --datapath_id=010010010073 --port_no=20
+
+$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_netfpga1g --mac_address=00:60:67:75:E7:62 --datapath_id=010010010073 --port_no=17
+$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_netfpga1g_2 --mac_address=00:60:67:75:E8:5D --datapath_id=010010010073 --port_no=47
+$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_gpu_1 --mac_address=68:05:CA:01:39:BE --datapath_id=010010010073 --port_no=13
+
 #$NOVA_BIN_DIR/nova-bm-manage interface create --node_id=$node_id --mac_address=00:15:17:73:06:83 --datapath_id=0x0 --port_no=0
 #$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_volume --mac_address=90:E2:BA:25:35:34 --datapath_id=0x010010010073 --port_no=10
 #$NOVA_BIN_DIR/nova-bm-manage --config-dir=$BM_CONF  interface create --node_id=$node_id_cluster_1 --mac_address=00:09:6B:B5:DE:11 --datapath_id=0x010010010073 --port_no=35

@@ -81,6 +81,7 @@ sudo ip addr flush dev $EXT_NET_IFACE
 
 sudo ovs-vsctl --no-wait -- --may-exist add-port $PUBLIC_BRIDGE $EXT_NET_IFACE
 
-#. ./bm-local.sh
+#. $TOP_DIR/ryu_port_reg.sh
+
 echo "Finished regular stack.sh"
 

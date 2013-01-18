@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+fvctl --url=https://localhost:8085 --passwd-file=/usr/etc/flowvisor/passFile listSlices
