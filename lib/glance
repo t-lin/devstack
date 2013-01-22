@@ -282,6 +282,7 @@ function configure_glance_new() {
             iniset $GLANCE_API_CONF DEFAULT swift_store_key $SERVICE_PASSWORD
             iniset $GLANCE_API_CONF DEFAULT swift_store_region $REGION_NAME
             iniset $GLANCE_API_CONF DEFAULT swift_store_create_container_on_put True
+            iniset $GLANCE_API_CONF DEFAULT swift_store_large_object_size 2120
         fi
         GLANCE_API_PASTE_INI=$GLANCE_CONF_DIR/glance-api-paste.ini
         cp $GLANCE_DIR/etc/glance-api-paste.ini $GLANCE_API_PASTE_INI

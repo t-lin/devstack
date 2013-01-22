@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Three arguments expected:
+#    1: Name of the slice
+#    2: IP address of the slice controller
+#    3: Port number of the slice controller
+
+if [[ -n "$1" ]]; then
+    SLICE_NAME=$1
+else
+    echo "Must specify first parameter (Name of the slice)"
+    ERR=1
+fi
+if [[ -n "$2" ]]; then
+    CTRL_IP_ADDR=$2
+else
+    echo "Must specify second parameter (Controller's IP address)"
+    ERR=1
+fi
+if [[ -n "$3" ]]; then
+    CTRL_PORT_NUM=$3
+else
+    echo "Must specify third parameter (Controller's port number)"
+    ERR=1
+fi
+
+if [[ -z "$ERR" ]]; then
+    #curl http://$RYU_API_HOST:$RYU_API_PORT/v1.0/flowvisor/"$SLICE_NAME"_"$CTRL_IP_ADDR"_"$CTRL_PORT_NUM" -X POST
+    fvctl --url=https://localhost:8085 --passwd-file=/usr/etc/flowvisor/passFile createSlice $SLICE_NAME tcp:$CTRL_IP_ADDR:$CTRL_PORT_NUM blek@blek.ca
+fi

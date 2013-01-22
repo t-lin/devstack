@@ -1103,7 +1103,7 @@ fi
     ADMIN_PASSWORD=$ADMIN_PASSWORD SERVICE_TENANT_NAME=$SERVICE_TENANT_NAME SERVICE_PASSWORD=$SERVICE_PASSWORD \
     SERVICE_TOKEN=$SERVICE_TOKEN SERVICE_ENDPOINT=$SERVICE_ENDPOINT SERVICE_HOST=$SERVICE_HOST \
     S3_SERVICE_PORT=$S3_SERVICE_PORT KEYSTONE_CATALOG_BACKEND=$KEYSTONE_CATALOG_BACKEND KEYSTONE_TYPE=$KEYSTONE_TYPE KEYSTONE_SERVICE_HOST=$KEYSTONE_SERVICE_HOST \
-    DEVSTACK_DIR=$TOP_DIR ENABLED_SERVICES=$ENABLED_SERVICES HEAT_API_CFN_PORT=$HEAT_API_CFN_PORT REGION_NAME=$REGION_NAME \
+    DEVSTACK_DIR=$TOP_DIR ENABLED_SERVICES=$ENABLED_SERVICES HEAT_API_CFN_PORT=$HEAT_API_CFN_PORT REGION_NAME=$REGION_NAME REGIONS=$REGIONS \
         bash -x $FILES/keystone_data.sh
 
     # Set up auth creds now that keystone is bootstrapped
@@ -1315,6 +1315,8 @@ fi
 
 # Quantum service (for controller node)
 if is_service_enabled q-svc; then
+    echo_summary "in q-svc"
+    
     Q_API_PASTE_FILE=/etc/quantum/api-paste.ini
     Q_POLICY_FILE=/etc/quantum/policy.json
 
@@ -2127,7 +2129,7 @@ if is_service_enabled n_swift; then
    OS_TENANT_NAME=admin \
    OS_REGION_NAME=$REGION_NAME\
    OS_USERNAME=admin\
-   ./swift_endpoint_change.sh $SWIFT_PUBLIC_IP $SWIFT_INTERNAL_IP
+   . $TOP_DIR/swift_endpoint_change.sh $SWIFT_PUBLIC_IP $SWIFT_INTERNAL_IP
    if is_service_enabled swift; then
      if [[ -e ${SWIFT_DATA_DIR}/drives/images/swift.img ]]; then
         if egrep -q ${SWIFT_DATA_DIR}/drives/sdb1 /proc/mounts; then
@@ -2167,6 +2169,12 @@ fi
 #  * **oneiric**: http://uec-images.ubuntu.com/oneiric/current/oneiric-server-cloudimg-amd64.tar.gz
 #  * **precise**: http://uec-images.ubuntu.com/precise/current/precise-server-cloudimg-amd64.tar.gz
 
+#first re-install glance and swift client
+
+configure_glanceclient
+setup_develop $SWIFTCLIENT_DIR
+configure_keystoneclient
+
 if is_service_enabled g-api; then
 
     #making sure glance data dir is owned by this user
@@ -2174,7 +2182,7 @@ if is_service_enabled g-api; then
     sudo chown $WHOAMI:$WHOAMI $DATA_DIR/glance -R
 
     echo_summary "Uploading images"
-    TOKEN=$(keystone  token-get | grep ' id ' | get_field 2)
+    TOKEN=$(keystone token-get | grep ' id ' | get_field 2)
 
     # Option to upload legacy ami-tty, which works with xenserver
     if [[ -n "$UPLOAD_LEGACY_TTY" ]]; then
@@ -2214,7 +2222,7 @@ if [[ -x $TOP_DIR/local.sh ]]; then
     KEYSTONE_AUTH_HOST=$KEYSTONE_AUTH_HOST REGION_NAME=$REGION_NAME \
     HORIZON_DIR=$HORIZON_DIR REGIONS=$REGIONS KEYSTONE_TYPE=$KEYSTONE_TYPE \
     ENABLED_SERVICES=$ENABLED_SERVICES PUBLIC_BRIDGE=$PUBLIC_BRIDGE \
-    OS_REGION_NAME=$REGION_NAME ADMIN_PASSWORD=$ADMIN_PASSWORD\
+    OS_REGION_NAME=$REGION_NAME ADMIN_PASSWORD=$ADMIN_PASSWORD \
     $TOP_DIR/local.sh
 fi
 

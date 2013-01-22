@@ -1,0 +1,30 @@
+#!/bin/bash
+# Three arguments expected:
+#    1: Name of the slice
+#    2: DPID of the switch
+#    3: Port number on the switch
+
+if [[ -n "$1" ]]; then
+    SLICE_NAME=$1
+else
+    echo "Must specify first parameter (Name of the slice)"
+    ERR=1
+fi
+if [[ -n "$2" ]]; then
+    DPID=$2
+else
+    echo "Must specify second parameter (DPID of target switch)"
+    ERR=1
+fi
+if [[ -n "$3" ]]; then
+    PORT_NUM=$3
+else
+    echo "Must specify third parameter (Port number on target switch)"
+    ERR=1
+fi
+
+if [[ -z "$ERR" ]]; then
+    #curl http://$RYU_API_HOST:$RYU_API_PORT/v1.0/flowvisor/"$SLICE_NAME"_"$CTRL_IP_ADDR"_"$CTRL_PORT_NUM" -X POST
+    fvctl --url=https://localhost:8085 --passwd-file=/usr/etc/flowvisor/passFile addFlowSpace $DPID 100 in_port=$PORT_NUM Slice:$SLICE_NAME=4
+fi
+

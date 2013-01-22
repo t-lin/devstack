@@ -93,7 +93,7 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
 
 
 #Nova
-  if [[ "$ENABLED_SERVICES" =~ "n-cpu" ]]; then
+#  if [[ "$ENABLED_SERVICES" =~ "n-cpu" ]]; then
 
     NOVA_USER=$(get_id keystone user-create \
         --name=nova \
@@ -115,7 +115,7 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
           --tenant_id $SERVICE_TENANT \
           --user_id $NOVA_USER \
           --role_id $RESELLER_ROLE
-  fi
+#  fi
 #Volume
   if [[ "$ENABLED_SERVICES" =~ "n-vol" ]]; then
      VOLUME_SERVICE=$(get_id keystone service-create \
@@ -126,7 +126,7 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
   fi
 
 #Glance
-  if [[ "$ENABLED_SERVICES" =~ "g-api" ]]; then
+#  if [[ "$ENABLED_SERVICES" =~ "g-api" ]]; then
       GLANCE_USER=$(get_id keystone user-create \
         --name=glance \
         --pass="$SERVICE_PASSWORD" \
@@ -140,10 +140,10 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
             --name=glance \
             --type=image \
             --description="Glance Image Service")
-  fi
+#  fi
 
 #Swift
-  if [[ "$ENABLED_SERVICES" =~ "swift" ]]; then
+#  if [[ "$ENABLED_SERVICES" =~ "swift" ]]; then
       SWIFT_USER=$(get_id keystone user-create \
         --name=swift \
         --pass="$SERVICE_PASSWORD" \
@@ -158,10 +158,10 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
             --type="object-store" \
             --description="Swift Service")
 
-  fi
+#  fi
 
 #Quantum
-  if [[ "$ENABLED_SERVICES" =~ "q-svc" ]]; then
+#  if [[ "$ENABLED_SERVICES" =~ "q-svc" ]]; then
       QUANTUM_USER=$(get_id keystone user-create \
         --name=quantum \
         --pass="$SERVICE_PASSWORD" \
@@ -175,15 +175,15 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
             --name=quantum \
             --type=network \
             --description="Quantum Service")
-  fi
+#  fi
 
 #EC2
-  if [[ "$ENABLED_SERVICES" =~ "n-api" ]]; then
+#  if [[ "$ENABLED_SERVICES" =~ "n-api" ]]; then
           EC2_SERVICE=$(get_id keystone service-create \
             --name=ec2 \
             --type=ec2 \
             --description="EC2 Compatibility Layer")
-  fi
+#  fi
 
 
 #S3
@@ -211,7 +211,7 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
   fi
 
 #Cinder
-  if [[ "$ENABLED_SERVICES" =~ "c-api" ]]; then
+#  if [[ "$ENABLED_SERVICES" =~ "c-api" ]]; then
       CINDER_USER=$(get_id keystone user-create --name=cinder \
                                               --pass="$SERVICE_PASSWORD" \
                                               --tenant_id $SERVICE_TENANT \
@@ -223,7 +223,7 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
             --name=cinder \
             --type=volume \
             --description="Cinder Service")
-  fi
+#  fi
 
 #Heat
 if [[ "$ENABLED_SERVICES" =~ "heat" ]]; then
@@ -293,25 +293,20 @@ fi
 
 # Endpoints
 # --------
-#Cheetah
-if [[ "$ENABLED_SERVICES" =~ "c-control" ]]; then
-  if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
-    keystone endpoint-create \
-        --region $REGION_NAME \
-      --service_id $CHEETAH_SERVICE \
-      --publicurl "http://$SERVICE_HOST:9090/v2.0" \
-      --adminurl "http://$SERVICE_HOST:9090/v2.0" \
-      --internalurl "http://$SERVICE_HOST:9090/v2.0"
-  fi
-fi
 # Keystone
 if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
-  keystone endpoint-create \
-        --region ${REGION_NAME} \
+ if [[ "$KEYSTONE_TYPE" = 'LOCAL' ]]; then
+    IFS=","
+    for region in $REGIONS
+    do
+       keystone endpoint-create \
+        --region $region \
       --service_id $KEYSTONE_SERVICE \
       --publicurl "http://$KEYSTONE_SERVICE_HOST:\$(public_port)s/v2.0" \
       --adminurl "http://$KEYSTONE_SERVICE_HOST:\$(admin_port)s/v2.0" \
       --internalurl "http://$KEYSTONE_SERVICE_HOST:\$(public_port)s/v2.0"
+    done
+   fi
 fi
 # Nova
 if [[ "$ENABLED_SERVICES" =~ "n-cpu" ]]; then
