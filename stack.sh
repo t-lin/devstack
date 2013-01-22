@@ -359,10 +359,11 @@ if is_service_enabled fv; then
         sudo chown `whoami` $FV_DIR
     fi
 
-    if [[ ! -f $FV_DIR/fv_config.json ]]; then
-        cp $TOP_DIR/samples/of/fv_config.json $FV_DIR/fv_config.json
-        sed -i -e 's/0\.0\.0\.0/'$HOST_IP'/g' $FV_DIR/fv_config.json
+    if [[ -f $FV_DIR/fv_config.json ]]; then
+        mv $FV_DIR/fv_config.json $FV_DIR/fv_config.json.backup
     fi
+    cp $TOP_DIR/samples/of/fv_config.json $FV_DIR/fv_config.json
+    sed -i -e 's/0\.0\.0\.0/'$HOST_IP'/g' $FV_DIR/fv_config.json
 
     if [[ ! -f $FV_DIR/passFile ]]; then
         touch $FV_DIR/passFile
@@ -1066,17 +1067,8 @@ default-storage-engine = InnoDB" $MY_CONF
     restart_service $MYSQL
 
     if is_service_enabled ryu; then
-        mysql -uroot -p$MYSQL_PASSWORD -e "DROP DATABASE IF EXISTS ryu;"
-        mysql -uroot -p$MYSQL_PASSWORD -e "CREATE DATABASE IF NOT EXISTS ryu CHARACTER SET utf8;"
-
-        mysql -uroot -p$MYSQL_PASSWORD ryu -e "DROP TABLE IF EXISTS networks;"
-        mysql -uroot -p$MYSQL_PASSWORD ryu -e "CREATE TABLE networks (network_id varchar(255) DEFAULT NULL, PRIMARY KEY (network_id))"
-
-        mysql -uroot -p$MYSQL_PASSWORD ryu -e "DROP TABLE IF EXISTS ports;"
-        mysql -uroot -p$MYSQL_PASSWORD ryu -e "CREATE TABLE ports (id INT PRIMARY KEY AUTO_INCREMENT, network_id varchar(255) DEFAULT NULL, datapath_id varchar(255) DEFAULT NULL, port_num varchar(255) DEFAULT NULL)"
-
-        mysql -uroot -p$MYSQL_PASSWORD ryu -e "DROP TABLE IF EXISTS macs;"
-        mysql -uroot -p$MYSQL_PASSWORD ryu -e "CREATE TABLE macs (network_id varchar(255) DEFAULT NULL, mac_address varchar(255) DEFAULT NULL, PRIMARY KEY (mac_address))"
+        mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "DROP DATABASE IF EXISTS ryu;"
+        mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "CREATE DATABASE IF NOT EXISTS ryu CHARACTER SET utf8;"
     fi
 fi
 

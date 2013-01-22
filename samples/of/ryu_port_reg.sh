@@ -6,6 +6,9 @@ curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_PXE__/010010010073_6
 curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_PXE__/010010010073_8
 
 curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_PXE__/010010010073_30 # eth0 cluster blades
+curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_PXE__/010010010073_32 # eth0 cluster blades
+curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_PXE__/010010010073_34 # eth0 cluster blades
+curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_PXE__/010010010073_36 # eth0 cluster blades
 
 curl -X PUT http://10.10.31.10:8090/v1.0/networks/__NW_ID_PXE_CTRL__
 curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_PXE_CTRL__/010010010073_10
@@ -24,6 +27,9 @@ curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_EXTERNAL__/0100100100
 curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_EXTERNAL__/010010010073_9
 curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_EXTERNAL__/010010010073_12
 
+curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_EXTERNAL__/010010010073_29 # eth1 cluster blades (for data)
+#curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_EXTERNAL__/010010010073_31 # eth1 cluster blades (for data)
+#curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_EXTERNAL__/010010010073_33 # eth1 cluster blades (for data)
 curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_EXTERNAL__/010010010073_35 # eth1 cluster blades (for data)
 
 # Register core internal management ports
@@ -32,3 +38,4 @@ curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_CORE_MGMT__/010010010
 curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_CORE_MGMT__/010010010073_43
 curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_CORE_MGMT__/010010010073_44
 curl -X POST http://10.10.31.10:8090/v1.0/networks/__NW_ID_CORE_MGMT__/010010010073_45
+
