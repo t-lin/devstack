@@ -356,14 +356,15 @@ if is_service_enabled fv; then
     FV_DIR=/usr/etc/flowvisor
     if [[ ! -d $FV_DIR ]]; then
         sudo mkdir -p $FV_DIR
-        sudo chown `whoami` $FV_DIR
     fi
+    sudo chown `whoami` $FV_DIR
 
     if [[ -f $FV_DIR/fv_config.json ]]; then
         mv $FV_DIR/fv_config.json $FV_DIR/fv_config.json.backup
     fi
     cp $TOP_DIR/samples/of/fv_config.json $FV_DIR/fv_config.json
-    sed -i -e 's/0\.0\.0\.0/'$HOST_IP'/g' $FV_DIR/fv_config.json
+    sed -i -e 's/0\.0\.0\.0/'$RYU_OFP_HOST'/g' $FV_DIR/fv_config.json
+    sed -i -e 's/6634/'$RYU_OFP_PORT'/g' $FV_DIR/fv_config.json
 
     if [[ ! -f $FV_DIR/passFile ]]; then
         touch $FV_DIR/passFile
