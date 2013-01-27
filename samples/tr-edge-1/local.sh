@@ -44,9 +44,9 @@ $NOVA_BIN_DIR/nova-manage instance_type set_key --name=m1.medium --key cpu_arch 
 $NOVA_BIN_DIR/nova-manage instance_type set_key --name=m1.large --key cpu_arch --value virtual
 $NOVA_BIN_DIR/nova-manage instance_type set_key --name=m1.xlarge --key cpu_arch --value virtual
 
-sudo apt-get install dnsmasq syslinux ipmitool qemu-kvm open-iscsi snmp
+sudo apt-get -y install dnsmasq syslinux ipmitool qemu-kvm open-iscsi snmp
 
-sudo apt-get install busybox tgt
+sudo apt-get -y install busybox tgt
 
 BMIB_REPO=https://github.com/hesamrahimi/baremetal-initrd-builder.git
 BMIB_DIR=$DEST/barematal-initrd-builder
@@ -260,7 +260,7 @@ fi
 
 echo "done baremetal local.sh"
 
-. $TOP_DIR/ryu_port_reg.sh
+. $TOP_DIR/port_reg.sh
 
     SERVICE_ENDPOINT=$KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_AUTH_HOST:$KEYSTONE_API_PORT/v2.0 \
     KEYSTONE_AUTH_HOST=$KEYSTONE_AUTH_HOST REGION_NAME=$REGION_NAME \

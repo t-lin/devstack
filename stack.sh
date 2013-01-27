@@ -1064,6 +1064,7 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
     fi
 fi
     # ``keystone_data.sh`` creates services, admin and demo users, and roles.
+    configure_keystoneclient
     SERVICE_ENDPOINT=$KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_AUTH_HOST:$KEYSTONE_AUTH_PORT/v2.0
 
     ADMIN_PASSWORD=$ADMIN_PASSWORD SERVICE_TENANT_NAME=$SERVICE_TENANT_NAME SERVICE_PASSWORD=$SERVICE_PASSWORD \
