@@ -69,7 +69,7 @@ function configure_glanceclient() {
 }
 
 # configure_glance() - Set config files, create data dirs, etc
-function configure_glance() {
+function configure_glance_old() {
     setup_develop $GLANCE_DIR
 
     if [[ ! -d $GLANCE_CONF_DIR ]]; then
@@ -211,7 +211,7 @@ function stop_glance() {
     screen -S $SCREEN_NAME -p g-reg -X kill
 }
 
-function configure_glance_new() {
+function configure_glance() {
     if is_service_enabled g-reg; then
         GLANCE_IMAGE_DIR=$DEST/glance/images
         # Delete existing images
@@ -282,7 +282,7 @@ function configure_glance_new() {
             iniset $GLANCE_API_CONF DEFAULT swift_store_key $SERVICE_PASSWORD
             iniset $GLANCE_API_CONF DEFAULT swift_store_region $REGION_NAME
             iniset $GLANCE_API_CONF DEFAULT swift_store_create_container_on_put True
-            iniset $GLANCE_API_CONF DEFAULT swift_store_large_object_size 2120
+            iniset $GLANCE_API_CONF DEFAULT swift_store_large_object_size 1120
         fi
         GLANCE_API_PASTE_INI=$GLANCE_CONF_DIR/glance-api-paste.ini
         cp $GLANCE_DIR/etc/glance-api-paste.ini $GLANCE_API_PASTE_INI

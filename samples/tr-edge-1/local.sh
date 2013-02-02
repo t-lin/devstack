@@ -74,13 +74,13 @@ fi
 
 #KERNEL_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-deployment-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
 
-glance image-list | grep baremetal-deployment | awk '{ print $2 }' | xargs glance image-delete  
+glance image-list | grep "$OS_REGION_NAME-baremetal-deployment" | awk '{ print $2 }' | xargs glance image-delete  
 
-KERNEL_ID=$(glance image-create --name "baremetal-deployment-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
+KERNEL_ID=$(glance image-create --name "$OS_REGION_NAME-baremetal-deployment-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
 echo "$KERNEL_ID"
 
 #RAMDISK_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-deployment-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
-RAMDISK_ID=$(glance image-create --name "baremetal-deployment-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
+RAMDISK_ID=$(glance image-create --name "$OS_REGION_NAME-baremetal-deployment-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
 echo "$RAMDISK_ID"
 
 echo "building ubuntu image"
@@ -95,6 +95,8 @@ export OS_REGION_NAME=CORE
 IMAGE_ID_OLD=$(glance image-list | grep Ubuntu64)
 if [[ $IMAGE_ID_OLD = "" ]]; then 
 #REAL_KERNEL_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-real-kernel" --public --container-format aki --disk-format aki < "$DEST/kernel" | grep ' id ' | get_field 2)
+   glance image-list | grep "baremetal-64-real-kernel" | awk '{print $2}' | xargs glance image-delete
+   glance image-list | grep "baremetal-64-real-ramdisk" | awk '{print $2}' | xargs glance image-delete
    REAL_KERNEL_ID=$(glance image-create --name "baremetal-64-real-kernel" --public --container-format aki --disk-format aki < "$DEST/kernel" | grep ' id ' | get_field 2)
 
 #REAL_RAMDISK_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-real-ramdisk" --public --container-format ari --disk-format ari < "$DEST/initrd" | grep ' id ' | get_field 2)
@@ -129,6 +131,8 @@ IMG_32=$IMG_DIR/ubuntu32.img
 IMAGE_ID_OLD=$(glance image-list | grep Ubuntu32)
 if [[ $IMAGE_ID_OLD = "" ]]; then 
 #REAL_KERNEL_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-32-real-kernel" --public --container-format aki --disk-format aki < "$KERNEL_32" | grep ' id ' | get_field 2)
+   glance image-list | grep "baremetal-32-real-kernel" | awk '{print $2}' | xargs glance image-delete
+   glance image-list | grep "baremetal-32-real-ramdisk" | awk '{print $2}' | xargs glance image-delete
    REAL_KERNEL_ID=$(glance image-create --name "baremetal-32-real-kernel" --public --container-format aki --disk-format aki < "$KERNEL_32" | grep ' id ' | get_field 2)
 
 #REAL_RAMDISK_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-32-real-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK_32" | grep ' id ' | get_field 2)
@@ -138,6 +142,14 @@ if [[ $IMAGE_ID_OLD = "" ]]; then
    glance image-create --name "Ubuntu32" --public --container-format bare --disk-format raw --property kernel_id=$REAL_KERNEL_ID --property ramdisk_id=$REAL_RAMDISK_ID < "$IMG_32"
 fi
 
+IMG=$IMG_DIR/UbuntuNF1.img
+IMAGE_ID_OLD=$(glance image-list | grep UbuntuNF1)
+if [[ $IMAGE_ID_OLD = "" && -f "$IMG" ]]; then
+   REAL_KERNEL_ID=$(glance image-list | grep "baremetal-32-real-kernel" | awk '{ print $2 }')
+   REAL_RAMDISK_ID=$(glance image-list | grep "baremetal-32-real-ramdisk" | awk '{ print $2 }')
+   echo "uploading NF1 image"
+   glance image-create --name "UbuntuNF1" --public --container-format bare --disk-format raw --property kernel_id=$REAL_KERNEL_ID --property ramdisk_id=$REAL_RAMDISK_ID < "$IMG"
+fi
 
 export OS_REGION_NAME=$ACTIVE_REGION
 
@@ -233,6 +245,7 @@ iso scheduler_host_manager nova.scheduler.baremetal_host_manager.BaremetalHostMa
 is baremetal_pxe_vlan_per_host $BM_PXE_PER_NODE
 is baremetal_pxe_parent_interface $BM_PXE_INTERFACE
 is firewall_driver ""
+isb firewall_driver ""
 is baremetal_vif_driver nova.virt.baremetal.ryu.ryu_vif_driver.RyuVIFDriver
 is host $BMC_HOST
 isb host $BEE2_HOST
