@@ -212,6 +212,13 @@ function stop_glance() {
 }
 
 function configure_glance() {
+    setup_develop $GLANCE_DIR
+
+    if [[ ! -d $GLANCE_CONF_DIR ]]; then
+        sudo mkdir -p $GLANCE_CONF_DIR
+    fi
+    sudo chown `whoami`:`whoami` $GLANCE_CONF_DIR -R
+
     if is_service_enabled g-reg; then
         GLANCE_IMAGE_DIR=$DEST/glance/images
         # Delete existing images
