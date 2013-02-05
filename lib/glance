@@ -75,7 +75,7 @@ function configure_glance_old() {
     if [[ ! -d $GLANCE_CONF_DIR ]]; then
         sudo mkdir -p $GLANCE_CONF_DIR
     fi
-    sudo chown `whoami`:`whomai` $GLANCE_CONF_DIR -R
+    sudo chown `whoami`:`whoami` $GLANCE_CONF_DIR -R
 
     # Copy over our glance configurations and update them
     cp $GLANCE_DIR/etc/glance-registry.conf $GLANCE_REGISTRY_CONF
