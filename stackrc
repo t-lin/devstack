@@ -45,7 +45,7 @@ CINDERCLIENT_BRANCH=master      # 1.0.0 20Sep2012: 2e6be694c1
 
 # compute service
 NOVA_REPO=${GIT_BASE}/savi-dev/nova.git
-NOVA_BRANCH=silver
+NOVA_BRANCH=b-silver
 
 # storage service
 SWIFT_REPO=${GIT_BASE}/savi-dev/swift.git
@@ -95,7 +95,7 @@ QUANTUM_BRANCH=silver
 
 # quantum client
 QUANTUM_CLIENT_REPO=${GIT_BASE}/savi-dev/python-quantumclient
-QUANTUM_CLIENT_BRANCH=master    # 2.1 14Sep2012: bc7ba5e19d
+QUANTUM_CLIENT_BRANCH=silver    # 2.1 14Sep2012: bc7ba5e19d
 
 # Tempest test suite
 TEMPEST_REPO=${GIT_BASE}/savi-dev/tempest.git

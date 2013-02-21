@@ -858,9 +858,7 @@ pip_install $(get_packages $FILES/pips | sort -u)
 
 # Quantum clean netns
 if is_service_enabled quantum; then
-    for net in `sudo ip netns list | grep q`; do
-        sudo ip netns delete $net
-    done
+    sudo ip netns list | grep q | xargs -I {} sudo ip netns del {} | true
 fi
 
 # Check Out Source
@@ -1101,11 +1099,12 @@ fi
     # ``keystone_data.sh`` creates services, admin and demo users, and roles.
     configure_keystoneclient
     SERVICE_ENDPOINT=$KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_AUTH_HOST:$KEYSTONE_AUTH_PORT/v2.0
+    PUBLIC_SERVICE_HOST=${PUBLIC_SERVICE_HOST:-$HOST_IP}
 
     ADMIN_PASSWORD=$ADMIN_PASSWORD SERVICE_TENANT_NAME=$SERVICE_TENANT_NAME SERVICE_PASSWORD=$SERVICE_PASSWORD \
     SERVICE_TOKEN=$SERVICE_TOKEN SERVICE_ENDPOINT=$SERVICE_ENDPOINT SERVICE_HOST=$SERVICE_HOST \
     S3_SERVICE_PORT=$S3_SERVICE_PORT KEYSTONE_CATALOG_BACKEND=$KEYSTONE_CATALOG_BACKEND KEYSTONE_TYPE=$KEYSTONE_TYPE KEYSTONE_SERVICE_HOST=$KEYSTONE_SERVICE_HOST \
-    DEVSTACK_DIR=$TOP_DIR ENABLED_SERVICES=$ENABLED_SERVICES HEAT_API_CFN_PORT=$HEAT_API_CFN_PORT REGION_NAME=$REGION_NAME REGIONS=$REGIONS \
+    DEVSTACK_DIR=$TOP_DIR PUBLIC_SERVICE_HOST=$PUBLIC_SERVICE_HOST ENABLED_SERVICES=$ENABLED_SERVICES HEAT_API_CFN_PORT=$HEAT_API_CFN_PORT REGION_NAME=$REGION_NAME REGIONS=$REGIONS \
         bash -x $FILES/keystone_data.sh
 
     # Set up auth creds now that keystone is bootstrapped
@@ -1335,6 +1334,7 @@ if is_service_enabled q-svc; then
 
     # Update either configuration file with plugin
     iniset $Q_CONF_FILE DEFAULT core_plugin $Q_PLUGIN_CLASS
+    iniset $Q_CONF_FILE DEFAULT debug False
 
     # set dns name server
     if [[ $DNS_NAME_SERVER ]]; then
@@ -1498,7 +1498,7 @@ if is_service_enabled q-dhcp; then
     # Set verbose
     iniset $Q_DHCP_CONF_FILE DEFAULT verbose True
     # Set debug
-    iniset $Q_DHCP_CONF_FILE DEFAULT debug True
+    iniset $Q_DHCP_CONF_FILE DEFAULT debug False
     iniset $Q_DHCP_CONF_FILE DEFAULT use_namespaces $Q_USE_NAMESPACE
     # Set state_path to DATA_DIR
     iniset $Q_DHCP_CONF_FILE DEFAULT state_path $DATA_DIR/dhcp
@@ -1529,7 +1529,7 @@ if is_service_enabled q-l3; then
     # Set verbose
     iniset $Q_L3_CONF_FILE DEFAULT verbose True
     # Set debug
-    #iniset $Q_L3_CONF_FILE DEFAULT debug True
+    iniset $Q_L3_CONF_FILE DEFAULT debug False
 
     iniset $Q_L3_CONF_FILE DEFAULT metadata_ip $Q_META_DATA_IP
     iniset $Q_L3_CONF_FILE DEFAULT use_namespaces $Q_USE_NAMESPACE
@@ -1551,7 +1551,7 @@ if is_service_enabled q-l3; then
         # remove internal ports
         for PORT in `sudo ovs-vsctl --no-wait list-ports $PUBLIC_BRIDGE`; do
             TYPE=$(sudo ovs-vsctl get interface $PORT type)
-            if [[ "$TYPE" == "internal" ]]; then
+            if [[ "$TYPE" == "internal" && "$PORT" != "ROUTER_EXT_IF" ]]; then
                 echo `sudo ip link delete $PORT` > /dev/null
                 sudo ovs-vsctl --no-wait del-port $bridge $PORT
             fi
@@ -1613,6 +1613,7 @@ if is_service_enabled swift; then
     sudo mkdir -p ${SWIFT_DATA_DIR}/drives
     sudo chown -R $USER:${USER_GROUP} ${SWIFT_DATA_DIR}
 
+    if [[ "$SWIFT_DRIVE" == "" ]]; then
     # Create a loopback disk and format it to XFS.
     if [[ -e ${SWIFT_DATA_DIR}/drives/images/swift.img ]]; then
         if egrep -q ${SWIFT_DATA_DIR}/drives/sdb1 /proc/mounts; then
@@ -1635,6 +1636,25 @@ if is_service_enabled swift; then
     if ! egrep -q ${SWIFT_DATA_DIR}/drives/sdb1 /proc/mounts; then
         sudo mount -t xfs -o loop,noatime,nodiratime,nobarrier,logbufs=8  \
             ${SWIFT_DATA_DIR}/drives/images/swift.img ${SWIFT_DATA_DIR}/drives/sdb1
+    fi
+
+    else
+        echo "using Swift drive: $SWIFT_DRIVE"
+
+        if egrep -q ${SWIFT_DATA_DIR}/drives/sdb1 /proc/mounts; then
+            sudo umount ${SWIFT_DATA_DIR}/drives/sdb1
+        fi
+        if egrep -q ${SWIFT_DRIVE} /proc/mounts; then
+            sudo umount ${SWIFT_DRIVE}
+        fi
+        # Make a fresh XFS filesystem
+        sudo mkfs.xfs -f -i size=1024 ${SWIFT_DRIVE}
+        
+        mkdir -p ${SWIFT_DATA_DIR}/drives/sdb1
+        if ! egrep -q ${SWIFT_DATA_DIR}/drives/sdb1 /proc/mounts; then
+            sudo mount -t xfs -o noatime,nodiratime,nobarrier,logbufs=8  \
+               ${SWIFT_DRIVE} ${SWIFT_DATA_DIR}/drives/sdb1
+        fi
     fi
 
     # Create a link to the above mount
@@ -1974,6 +1994,12 @@ if is_service_enabled heat; then
 fi
 
 
+#first re-install glance and swift client
+
+configure_glanceclient
+setup_develop $SWIFTCLIENT_DIR
+configure_keystoneclient
+
 # Launch Services
 # ===============
 
@@ -2019,6 +2045,13 @@ FIXED_RANGE_DEMO_GATEWAY=${FIXED_RANGE_DEMO_GATEWAY:-10.2.0.1}
 FIXED_RANGE_DEMO2=${FIXED_RANGE_DEMO2:-10.2.1.0/24}
 FIXED_RANGE_DEMO2_GATEWAY=${FIXED_RANGE_DEMO2_GATEWAY:-10.2.1.1}
 
+
+# Quantum clean netns
+if is_service_enabled quantum; then
+    echo_summary "Deleting old name spaces Quantum"
+    sudo ip netns list | grep q | xargs -I {} sudo ip netns del {} | true
+fi
+
 if is_service_enabled q-svc; then
     echo_summary "Starting Quantum"
     # Start the Quantum service
@@ -2045,15 +2078,8 @@ if is_service_enabled q-svc; then
         quantum router-interface-add $ROUTER_ID $SUBNET_ID
         # Create an external network, and a subnet. Configure the external network as router gw
         EXT_NET_ID=$(quantum net-create ext_net -- --router:external=True | grep ' id ' | get_field 2)
-        EXT_GW_IP=$(quantum subnet-create --ip_version 4 $EXT_NET_ID $FLOATING_RANGE -- --enable_dhcp=False | grep 'gateway_ip' | get_field 2)
+        EXT_GW_IP=$(quantum subnet-create --ip_version 4 --gateway $FLOATING_GW_IP --allocation-pool start=$START_FLOATING_IP,end=$END_FLOATING_IP $EXT_NET_ID $FLOATING_RANGE -- --enable_dhcp=False | grep 'gateway_ip' | get_field 2)
         quantum router-gateway-set $ROUTER_ID $EXT_NET_ID
-        if [[ "$Q_PLUGIN" = "openvswitch" || "$Q_PLUGIN" = "ryu" ]] && [[ "$Q_USE_NAMESPACE" = "True" ]]; then
-            CIDR_LEN=${FLOATING_RANGE#*/}
-            sudo ip addr add $EXT_GW_IP/$CIDR_LEN dev $PUBLIC_BRIDGE
-            sudo ip link set $PUBLIC_BRIDGE up
-            ROUTER_GW_IP=`quantum port-list -c fixed_ips -c device_owner | grep router_gateway | awk -F '"' '{ print $8; }'`
-            sudo route add -net $FIXED_RANGE_DEMO gw $ROUTER_GW_IP
-        fi
         if [[ "$Q_USE_NAMESPACE" == "False" ]]; then
             # Explicitly set router id in l3 agent configuration
             iniset $Q_L3_CONF_FILE DEFAULT router_id $ROUTER_ID
@@ -2066,9 +2092,6 @@ if is_service_enabled q-svc; then
     SUBNET_ID=$(quantum subnet-create --tenant_id $TENANT_ID --ip_version 4 --gateway $FIXED_RANGE_DEMO2_GATEWAY $NET_ID $FIXED_RANGE_DEMO2 --dns_nameservers list=true $DNS_NAME_SERVER | grep ' id ' | get_field 2)
     if is_service_enabled q-l3; then
         quantum router-interface-add $ROUTER_ID $SUBNET_ID
-        if [[ "$Q_PLUGIN" = "openvswitch" || "$Q_PLUGIN" = "ryu" ]] && [[ "$Q_USE_NAMESPACE" = "True" ]]; then
-            sudo route add -net $FIXED_RANGE_DEMO2 gw $ROUTER_GW_IP
-        fi
         if [[ "$Q_USE_NAMESPACE" == "False" ]]; then
             # Explicitly set router id in l3 agent configuration
             iniset $Q_L3_CONF_FILE DEFAULT router_id $ROUTER_ID

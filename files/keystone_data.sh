@@ -93,7 +93,7 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
 
 
 #Nova
-#  if [[ "$ENABLED_SERVICES" =~ "n-cpu" ]]; then
+#  if [[ "$ENABLED_SERVICES" =~ "n-api" ]]; then
 
     NOVA_USER=$(get_id keystone user-create \
         --name=nova \
@@ -261,7 +261,7 @@ else
   if [[ "$ENABLED_SERVICES" =~ "key" ]]; then
     KEYSTONE_SERVICE=$(keystone service-id keystone)
   fi
-  if [[ "$ENABLED_SERVICES" =~ "n-cpu" ]]; then
+  if [[ "$ENABLED_SERVICES" =~ "n-api" ]]; then
     NOVA_SERVICE=$(keystone service-id nova)
   fi
   if [[ "$ENABLED_SERVICES" =~ "n-vol" ]]; then
@@ -309,12 +309,13 @@ if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
    fi
 fi
 # Nova
-if [[ "$ENABLED_SERVICES" =~ "n-cpu" ]]; then
+if [[ "$ENABLED_SERVICES" =~ "n-api" ]]; then
     if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
+        keystone endpoint-list | grep ${REGION_NAME} | grep $NOVA_SERVICE | awk '{ print $2 }' | xargs -I {} keystone endpoint-delete {}
         keystone endpoint-create \
             --region ${REGION_NAME} \
             --service_id $NOVA_SERVICE \
-            --publicurl "http://$SERVICE_HOST:\$(compute_port)s/v2/\$(tenant_id)s" \
+            --publicurl "http://$PUBLIC_SERVICE_HOST:\$(compute_port)s/v2/\$(tenant_id)s" \
             --adminurl "http://$SERVICE_HOST:\$(compute_port)s/v2/\$(tenant_id)s" \
             --internalurl "http://$SERVICE_HOST:\$(compute_port)s/v2/\$(tenant_id)s"
     fi
@@ -328,10 +329,11 @@ fi
 # Volume
 if [[ "$ENABLED_SERVICES" =~ "n-vol" ]]; then
     if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
+        keystone endpoint-list | grep ${REGION_NAME} | grep $VOLUME_SERVICE | awk '{ print $2 }' | xargs -I {} keystone endpoint-delete {}
         keystone endpoint-create \
             --region ${REGION_NAME} \
             --service_id $VOLUME_SERVICE \
-            --publicurl "http://$SERVICE_HOST:8776/v1/\$(tenant_id)s" \
+            --publicurl "http://$PUBLIC_SERVICE_HOST:8776/v1/\$(tenant_id)s" \
             --adminurl "http://$SERVICE_HOST:8776/v1/\$(tenant_id)s" \
             --internalurl "http://$SERVICE_HOST:8776/v1/\$(tenant_id)s"
     fi
@@ -340,10 +342,11 @@ fi
 #Heat
 if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
    if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
+        keystone endpoint-list | grep ${REGION_NAME} | grep $HEAT_CFN_SERVICE | awk '{ print $2 }' | xargs -I {} keystone endpoint-delete {}
         keystone endpoint-create \
             --region ${REGION_NAME} \
             --service_id $HEAT_CFN_SERVICE \
-            --publicurl "http://$SERVICE_HOST:$HEAT_API_CFN_PORT/v1" \
+            --publicurl "http://$PUBLIC_SERVICE_HOST:$HEAT_API_CFN_PORT/v1" \
             --adminurl "http://$SERVICE_HOST:$HEAT_API_CFN_PORT/v1" \
             --internalurl "http://$SERVICE_HOST:$HEAT_API_CFN_PORT/v1"
     fi
@@ -352,10 +355,11 @@ fi
 # Glance
 if [[ "$ENABLED_SERVICES" =~ "g-api" ]]; then
     if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
+        keystone endpoint-list | grep ${REGION_NAME} | grep $GLANCE_SERVICE | awk '{ print $2 }' | xargs -I {} keystone endpoint-delete {}
         keystone endpoint-create \
             --region ${REGION_NAME} \
             --service_id $GLANCE_SERVICE \
-            --publicurl "http://$SERVICE_HOST:9292/v1" \
+            --publicurl "http://$PUBLIC_SERVICE_HOST:9292/v1" \
             --adminurl "http://$SERVICE_HOST:9292/v1" \
             --internalurl "http://$SERVICE_HOST:9292/v1"
     fi
@@ -364,10 +368,11 @@ fi
 # Swift
 if [[ "$ENABLED_SERVICES" =~ "swift" ]]; then
     if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
+        keystone endpoint-list | grep ${REGION_NAME} | grep $SWIFT_SERVICE | awk '{ print $2 }' | xargs -I {} keystone endpoint-delete {}
         keystone endpoint-create \
             --region ${REGION_NAME} \
             --service_id $SWIFT_SERVICE \
-            --publicurl "http://$SERVICE_HOST:8080/v1/AUTH_\$(tenant_id)s" \
+            --publicurl "http://$PUBLIC_SERVICE_HOST:8080/v1/AUTH_\$(tenant_id)s" \
             --adminurl "http://$SERVICE_HOST:8080/v1" \
             --internalurl "http://$SERVICE_HOST:8080/v1/AUTH_\$(tenant_id)s"
     fi
@@ -375,10 +380,11 @@ fi
 
 if [[ "$ENABLED_SERVICES" =~ "q-svc" ]]; then
    if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
+        keystone endpoint-list | grep ${REGION_NAME} | grep $QUANTUM_SERVICE | awk '{ print $2 }' | xargs -I {} keystone endpoint-delete {}
         keystone endpoint-create \
             --region ${REGION_NAME} \
             --service_id $QUANTUM_SERVICE \
-            --publicurl "http://$SERVICE_HOST:9696/" \
+            --publicurl "http://$PUBLIC_SERVICE_HOST:9696/" \
             --adminurl "http://$SERVICE_HOST:9696/" \
             --internalurl "http://$SERVICE_HOST:9696/"
     fi
@@ -387,10 +393,11 @@ fi
 # EC2
 if [[ "$ENABLED_SERVICES" =~ "n-api" ]]; then
     if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
+        keystone endpoint-list | grep ${REGION_NAME} | grep $EC2_SERVICE | awk '{ print $2 }' | xargs -I {} keystone endpoint-delete {}
         keystone endpoint-create \
             --region ${REGION_NAME} \
             --service_id $EC2_SERVICE \
-            --publicurl "http://$SERVICE_HOST:8773/services/Cloud" \
+            --publicurl "http://$PUBLIC_SERVICE_HOST:8773/services/Cloud" \
             --adminurl "http://$SERVICE_HOST:8773/services/Admin" \
             --internalurl "http://$SERVICE_HOST:8773/services/Cloud"
     fi
@@ -399,10 +406,11 @@ fi
 # S3
 if [[ "$ENABLED_SERVICES" =~ "n-obj" || "$ENABLED_SERVICES" =~ "swift" ]]; then
     if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
+        keystone endpoint-list | grep ${REGION_NAME} | grep $S3_SERVICE | awk '{ print $2 }' | xargs -I {} keystone endpoint-delete {}
         keystone endpoint-create \
             --region ${REGION_NAME} \
             --service_id $S3_SERVICE \
-            --publicurl "http://$SERVICE_HOST:$S3_SERVICE_PORT" \
+            --publicurl "http://$PUBLIC_SERVICE_HOST:$S3_SERVICE_PORT" \
             --adminurl "http://$SERVICE_HOST:$S3_SERVICE_PORT" \
             --internalurl "http://$SERVICE_HOST:$S3_SERVICE_PORT"
     fi
@@ -410,14 +418,12 @@ fi
 
 if [[ "$ENABLED_SERVICES" =~ "c-api" ]]; then
     if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
+        keystone endpoint-list | grep ${REGION_NAME} | grep $CINDER_SERVICE | awk '{ print $2 }' | xargs -I {} keystone endpoint-delete {}
         keystone endpoint-create \
             --region ${REGION_NAME} \
             --service_id $CINDER_SERVICE \
-            --publicurl "http://$SERVICE_HOST:8776/v1/\$(tenant_id)s" \
+            --publicurl "http://$PUBLIC_SERVICE_HOST:8776/v1/\$(tenant_id)s" \
             --adminurl "http://$SERVICE_HOST:8776/v1/\$(tenant_id)s" \
             --internalurl "http://$SERVICE_HOST:8776/v1/\$(tenant_id)s"
     fi
 fi
-
-ls
-
