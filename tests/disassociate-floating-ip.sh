@@ -11,7 +11,7 @@ else
 fi
 
 if [[ -z "$ERR" ]]; then
-   FLOATING_IP_ID=`quantum floatingip-list | grep "$FLOATING_IP" | cut -d "|" -f 2 | sed 's/[ ]//g'`
+   FLOATING_IP_ID=`quantum floatingip-list | grep "$FLOATING_IP" | awk '{print $2}'`
 
    quantum floatingip-disassociate $FLOATING_IP_ID
 
