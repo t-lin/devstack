@@ -74,13 +74,13 @@ fi
 
 #KERNEL_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-deployment-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
 
-glance image-list | grep "$OS_REGION_NAME-baremetal-deployment" | awk '{ print $2 }' | xargs glance image-delete  
+glance image-list | grep "$REGION_NAME-baremetal-deployment" | awk '{ print $2 }' | xargs -I {} glance image-delete {}
 
-KERNEL_ID=$(glance image-create --name "$OS_REGION_NAME-baremetal-deployment-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
+KERNEL_ID=$(glance image-create --name "$REGION_NAME-baremetal-deployment-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
 echo "$KERNEL_ID"
 
 #RAMDISK_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-deployment-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
-RAMDISK_ID=$(glance image-create --name "$OS_REGION_NAME-baremetal-deployment-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
+RAMDISK_ID=$(glance image-create --name "$REGION_NAME-baremetal-deployment-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
 echo "$RAMDISK_ID"
 
 echo "building ubuntu image"
@@ -95,8 +95,8 @@ export OS_REGION_NAME=CORE
 IMAGE_ID_OLD=$(glance image-list | grep Ubuntu64)
 if [[ $IMAGE_ID_OLD = "" ]]; then 
 #REAL_KERNEL_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-real-kernel" --public --container-format aki --disk-format aki < "$DEST/kernel" | grep ' id ' | get_field 2)
-   glance image-list | grep "baremetal-64-real-kernel" | awk '{print $2}' | xargs glance image-delete
-   glance image-list | grep "baremetal-64-real-ramdisk" | awk '{print $2}' | xargs glance image-delete
+   glance image-list | grep "baremetal-64-real-kernel" | awk '{print $2}' | xargs -I {} glance image-delete {}
+   glance image-list | grep "baremetal-64-real-ramdisk" | awk '{print $2}' | xargs -I {} glance image-delete {}
    REAL_KERNEL_ID=$(glance image-create --name "baremetal-64-real-kernel" --public --container-format aki --disk-format aki < "$DEST/kernel" | grep ' id ' | get_field 2)
 
 #REAL_RAMDISK_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-real-ramdisk" --public --container-format ari --disk-format ari < "$DEST/initrd" | grep ' id ' | get_field 2)
@@ -131,8 +131,8 @@ IMG_32=$IMG_DIR/ubuntu32.img
 IMAGE_ID_OLD=$(glance image-list | grep Ubuntu32)
 if [[ $IMAGE_ID_OLD = "" ]]; then 
 #REAL_KERNEL_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-32-real-kernel" --public --container-format aki --disk-format aki < "$KERNEL_32" | grep ' id ' | get_field 2)
-   glance image-list | grep "baremetal-32-real-kernel" | awk '{print $2}' | xargs glance image-delete
-   glance image-list | grep "baremetal-32-real-ramdisk" | awk '{print $2}' | xargs glance image-delete
+   glance image-list | grep "baremetal-32-real-kernel" | awk '{print $2}' | xargs -I {} glance image-delete {}
+   glance image-list | grep "baremetal-32-real-ramdisk" | awk '{print $2}' | xargs -I {} glance image-delete {}
    REAL_KERNEL_ID=$(glance image-create --name "baremetal-32-real-kernel" --public --container-format aki --disk-format aki < "$KERNEL_32" | grep ' id ' | get_field 2)
 
 #REAL_RAMDISK_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-32-real-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK_32" | grep ' id ' | get_field 2)
@@ -277,11 +277,15 @@ sleep 1.5
 screen -S stack -p n-sch -X stuff "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-scheduler --config-dir=$BM_CONF $NL"
 sleep 5
 
-echo "restarting nova-compute"
-screen -S stack -p n-cpu -X kill
-screen -S stack -X screen -t n-cpu
-sleep 1.5
-screen -S stack -p n-cpu -X stuff "cd $NOVA_DIR && sg libvirtd \"$NOVA_BIN_DIR/nova-compute --config-dir=/etc/nova\" $NL"
+if is_service_enabled n-cpu; then
+
+    echo "restarting nova-compute"
+    screen -S stack -p n-cpu -X kill
+    screen -S stack -X screen -t n-cpu
+    sleep 1.5
+    screen -S stack -p n-cpu -X stuff "cd $NOVA_DIR && sg libvirtd \"$NOVA_BIN_DIR/nova-compute --config-dir=/etc/nova\" $NL"
+
+fi
 
 echo "starting bm_deploy_server"
 screen -S stack -p n-bmd -X kill
@@ -319,6 +323,7 @@ echo "done baremetal local.sh"
 
 . $TOP_DIR/port_reg.sh
 . $TOP_DIR/port_bond.sh
+. $TOP_DIR/tenant-add.sh
 
     SERVICE_ENDPOINT=$KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_AUTH_HOST:$KEYSTONE_API_PORT/v2.0 \
     KEYSTONE_AUTH_HOST=$KEYSTONE_AUTH_HOST REGION_NAME=$REGION_NAME \
