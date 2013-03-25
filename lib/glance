@@ -266,6 +266,7 @@ function configure_glance() {
         iniset $GLANCE_API_CONF DEFAULT registry_host $GLANCE_REGISTRY_HOST
         iniset $GLANCE_API_CONF DEFAULT registry_port $GLANCE_REGISTRY_PORT
         iniset $GLANCE_API_CONF DEFAULT image_cache_max_size $GLANCE_CACHE_MAX_SIZE
+        iniset $GLANCE_API_CONF DEFAULT image_cache_dir $GLANCE_CACHE_DIR/
         
         if [ "$GLANCE_API_FLAVOR" == "keystone+cachemanagement" ]; then
            echo "PATH=""$PATH" > cronTemp
