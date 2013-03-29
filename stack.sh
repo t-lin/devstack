@@ -1551,7 +1551,7 @@ if is_service_enabled q-l3; then
         # remove internal ports
         for PORT in `sudo ovs-vsctl --no-wait list-ports $PUBLIC_BRIDGE`; do
             TYPE=$(sudo ovs-vsctl get interface $PORT type)
-            if [[ "$TYPE" == "internal" && "$PORT" != "ROUTER_EXT_IF" ]]; then
+            if [[ "$TYPE" == "internal" && "$PORT" != "$ROUTER_EXT_IF" ]]; then
                 echo `sudo ip link delete $PORT` > /dev/null
                 sudo ovs-vsctl --no-wait del-port $bridge $PORT
             fi
