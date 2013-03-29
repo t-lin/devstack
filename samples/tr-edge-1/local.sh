@@ -18,21 +18,17 @@ MYSQL_USER=${MYSQL_USER:-root}
 BM_PXE_INTERFACE=${BM_PXE_INTERFACE:-eth1}
 BM_PXE_PER_NODE=`trueorfalse False $BM_PXE_PER_NODE`
 
-$NOVA_BIN_DIR/nova-manage instance_type create --name=baremetal.small --cpu=2 --memory=2048 --root_gb=40 --ephemeral_gb=20 --swap=2048 --rxtx_factor=1 --flavor=6
-$NOVA_BIN_DIR/nova-manage instance_type set_key --name=baremetal.small --key cpu_arch --value x86_64
-$NOVA_BIN_DIR/nova-manage instance_type create --name=baremetal.medium --cpu=1 --memory=4096 --root_gb=40 --ephemeral_gb=20 --swap=2048 --rxtx_factor=1 --flavor=7
-$NOVA_BIN_DIR/nova-manage instance_type set_key --name=baremetal.medium --key cpu_arch --value x86_64
-$NOVA_BIN_DIR/nova-manage instance_type create --name=baremetal.minimum --cpu=1 --memory=1 --root_gb=40 --ephemeral_gb=0 --swap=2048 --rxtx_factor=1 --flavor=8
-$NOVA_BIN_DIR/nova-manage instance_type set_key --name=baremetal.minimum --key cpu_arch --value x86_64
-$NOVA_BIN_DIR/nova-manage instance_type create --name=gpu --cpu=1 --memory=1 --root_gb=100 --ephemeral_gb=0 --swap=2048 --rxtx_factor=1 --flavor=9
+$NOVA_BIN_DIR/nova-manage instance_type create --name=gpu --cpu=1 --memory=1 --root_gb=100 --ephemeral_gb=0 --swap=2048 --rxtx_factor=1 --flavor=6
 $NOVA_BIN_DIR/nova-manage instance_type set_key --name=gpu --key cpu_arch --value gpu_x86_64
-$NOVA_BIN_DIR/nova-manage instance_type create --name=netfpga.10g --cpu=1 --memory=1 --root_gb=40 --ephemeral_gb=0 --swap=2048 --rxtx_factor=1 --flavor=10
+$NOVA_BIN_DIR/nova-manage instance_type create --name=netfpga.10g --cpu=1 --memory=1 --root_gb=50 --ephemeral_gb=0 --swap=2048 --rxtx_factor=1 --flavor=7
 $NOVA_BIN_DIR/nova-manage instance_type set_key --name=netfpga.10g --key cpu_arch --value nf2_x86_64
-$NOVA_BIN_DIR/nova-manage instance_type create --name=netfpga.1g --cpu=1 --memory=1 --root_gb=40 --ephemeral_gb=0 --swap=2048 --rxtx_factor=1 --flavor=11
+$NOVA_BIN_DIR/nova-manage instance_type create --name=netfpga.1g --cpu=1 --memory=1 --root_gb=40 --ephemeral_gb=0 --swap=2048 --rxtx_factor=1 --flavor=8
 $NOVA_BIN_DIR/nova-manage instance_type set_key --name=netfpga.1g --key cpu_arch --value nf1_i686
-$NOVA_BIN_DIR/nova-manage instance_type create --name=baremetal32.minimum --cpu=1 --memory=1 --root_gb=30 --ephemeral_gb=0 --swap=2048 --rxtx_factor=1 --flavor=12
-$NOVA_BIN_DIR/nova-manage instance_type set_key --name=baremetal32.minimum --key cpu_arch --value i686
-$NOVA_BIN_DIR/nova-manage instance_type create --name=bee2 --cpu=1 --memory=1 --root_gb=40 --ephemeral_gb=0 --swap=2048 --rxtx_factor=1 --flavor=13
+$NOVA_BIN_DIR/nova-manage instance_type create --name=xeon_32 --cpu=1 --memory=1 --root_gb=30 --ephemeral_gb=0 --swap=2048 --rxtx_factor=1 --flavor=9
+$NOVA_BIN_DIR/nova-manage instance_type set_key --name=xeon_32 --key cpu_arch --value i686
+$NOVA_BIN_DIR/nova-manage instance_type create --name=atom --cpu=1 --memory=1 --root_gb=50 --ephemeral_gb=0 --swap=2048 --rxtx_factor=1 --flavor=10
+$NOVA_BIN_DIR/nova-manage instance_type set_key --name=atom --key cpu_arch --value i686_atom
+$NOVA_BIN_DIR/nova-manage instance_type create --name=bee2 --cpu=1 --memory=1 --root_gb=40 --ephemeral_gb=0 --swap=2048 --rxtx_factor=1 --flavor=11
 $NOVA_BIN_DIR/nova-manage instance_type set_key --name=bee2 --key cpu_arch --value bee2_board
 
 $NOVA_BIN_DIR/nova-manage instance_type set_key --name=m1.tiny --key cpu_arch --value virtual
@@ -42,7 +38,6 @@ $NOVA_BIN_DIR/nova-manage instance_type set_key --name=m1.large --key cpu_arch -
 $NOVA_BIN_DIR/nova-manage instance_type set_key --name=m1.xlarge --key cpu_arch --value virtual
 
 sudo apt-get -y install dnsmasq syslinux ipmitool qemu-kvm open-iscsi snmp
-
 sudo apt-get -y install busybox tgt
 
 BMIB_REPO=https://github.com/hesamrahimi/baremetal-initrd-builder.git
@@ -74,14 +69,16 @@ fi
 
 #KERNEL_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-deployment-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
 
-glance image-list | grep "$REGION_NAME-baremetal-deployment" | awk '{ print $2 }' | xargs -I {} glance image-delete {}
+DEP_IMAGE_ID=`glance image-list | grep "baremetal-deployment" | awk '{ print $2 }'`
 
-KERNEL_ID=$(glance image-create --name "$REGION_NAME-baremetal-deployment-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
-echo "$KERNEL_ID"
+if [[ -z "DEP_IMAGE_ID" ]]; then
+    KERNEL_ID=$(glance image-create --name "baremetal-deployment-kernel" --public --container-format aki --disk-format aki < "$KERNEL" | grep ' id ' | get_field 2)
+    echo "$KERNEL_ID"
 
 #RAMDISK_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-deployment-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
-RAMDISK_ID=$(glance image-create --name "$REGION_NAME-baremetal-deployment-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
-echo "$RAMDISK_ID"
+    RAMDISK_ID=$(glance image-create --name "baremetal-deployment-ramdisk" --public --container-format ari --disk-format ari < "$RAMDISK" | grep ' id ' | get_field 2)
+    echo "$RAMDISK_ID"
+fi
 
 echo "building ubuntu image"
 IMG=$IMG_DIR/ubuntu.img
@@ -93,7 +90,7 @@ export OS_REGION_NAME=CORE
 
 
 IMAGE_ID_OLD=$(glance image-list | grep Ubuntu64)
-if [[ $IMAGE_ID_OLD = "" ]]; then 
+if [[ -z "$IMAGE_ID_OLD" ]]; then 
 #REAL_KERNEL_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-real-kernel" --public --container-format aki --disk-format aki < "$DEST/kernel" | grep ' id ' | get_field 2)
    glance image-list | grep "baremetal-64-real-kernel" | awk '{print $2}' | xargs -I {} glance image-delete {}
    glance image-list | grep "baremetal-64-real-ramdisk" | awk '{print $2}' | xargs -I {} glance image-delete {}
@@ -117,7 +114,7 @@ fi
 
 IMG=$IMG_DIR/cuda_ubuntu_12_04.img
 IMAGE_ID_OLD=$(glance image-list | grep UbuntuGPU)
-if [[ $IMAGE_ID_OLD = "" && -f "$IMG" ]]; then
+if [[ -z "$IMAGE_ID_OLD" && -f "$IMG" ]]; then
    REAL_KERNEL_ID=$(glance image-list | grep "baremetal-64-real-kernel" | awk '{ print $2 }')
    REAL_RAMDISK_ID=$(glance image-list | grep "baremetal-64-real-ramdisk" | awk '{ print $2 }')
    echo "Uploading GPU image"
@@ -129,7 +126,7 @@ RAMDISK_32=~/ramdisk32
 IMG_32=$IMG_DIR/ubuntu32.img
 
 IMAGE_ID_OLD=$(glance image-list | grep Ubuntu32)
-if [[ $IMAGE_ID_OLD = "" ]]; then 
+if [[ -z "$IMAGE_ID_OLD" ]]; then 
 #REAL_KERNEL_ID=$(glance --os-auth-token $TOKEN --os-image-url http://$GLANCE_HOSTPORT image-create --name "baremetal-32-real-kernel" --public --container-format aki --disk-format aki < "$KERNEL_32" | grep ' id ' | get_field 2)
    glance image-list | grep "baremetal-32-real-kernel" | awk '{print $2}' | xargs -I {} glance image-delete {}
    glance image-list | grep "baremetal-32-real-ramdisk" | awk '{print $2}' | xargs -I {} glance image-delete {}
@@ -144,7 +141,7 @@ fi
 
 IMG=$IMG_DIR/UbuntuNF1.img
 IMAGE_ID_OLD=$(glance image-list | grep UbuntuNF1)
-if [[ $IMAGE_ID_OLD = "" && -f "$IMG" ]]; then
+if [[ -z "$IMAGE_ID_OLD" && -f "$IMG" ]]; then
    REAL_KERNEL_ID=$(glance image-list | grep "baremetal-32-real-kernel" | awk '{ print $2 }')
    REAL_RAMDISK_ID=$(glance image-list | grep "baremetal-32-real-ramdisk" | awk '{ print $2 }')
    echo "uploading NF1 image"
@@ -305,25 +302,11 @@ screen -S stack -X screen -t n-cpu-bee2
 sleep 1.5
 screen -S stack -p n-cpu-bee2 -X stuff "cd $NOVA_DIR && sg libvirtd \"$NOVA_BIN_DIR/nova-compute --config-dir=$BEE2_CONF\" $NL"
 
-if [[ $PUBLIC_INTERFACE != "" ]]; then
-  TEMP_BR=`sudo ovs-vsctl port-to-br $PUBLIC_INTERFACE`
-  if [[ $TEMP_BR != $PUBLIC_BRIDGE ]]; then
-     echo "removing $PUBLIC_INTERFACE from $TEMP_BR"
-     sudo ovs-vsctl del-port $TEMP_BR $PUBLIC_INTERFACE
-     TEMP_BR=""
-  fi
-  if [[ $TEMP_BR = "" ]]; then
-     echo "adding $PUBLIC_INTERFACE to $PUBLIC_BRIDGE"
-     sudo ovs-vsctl --no-wait -- --may-exist add-port $PUBLIC_BRIDGE $PUBLIC_INTERFACE
-  fi
-  sudo ifconfig $PUBLIC_INTERFACE up promisc
-fi
-
 echo "done baremetal local.sh"
 
 . $TOP_DIR/port_reg.sh
 . $TOP_DIR/port_bond.sh
-. $TOP_DIR/tenant-add.sh
+$TOP_DIR/tenant-add.sh
 
     SERVICE_ENDPOINT=$KEYSTONE_AUTH_PROTOCOL://$KEYSTONE_AUTH_HOST:$KEYSTONE_API_PORT/v2.0 \
     KEYSTONE_AUTH_HOST=$KEYSTONE_AUTH_HOST REGION_NAME=$REGION_NAME \
