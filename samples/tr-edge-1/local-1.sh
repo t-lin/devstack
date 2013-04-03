@@ -69,19 +69,27 @@ fi
 # Add tcp/22 to default security group
 source $TOP_DIR/tests/add-defaults
 
-# Remove EXT_NET_IFACE from any bridges it may be connected to
-CURR_OVS=`sudo ovs-vsctl port-to-br $EXT_NET_IFACE`
-if [[ ! -z "$CURR_OVS" ]]; then
-  sudo ovs-vsctl del-port $CURR_OVS $EXT_NET_IFACE
-fi
+# Remove PUBIC_INTERFACE from any bridges it may be connected to
+sudo ovs-vsctl -- --if-exists del-port $PUBLIC_INTERFACE
 
 # Add interface to public bridge and remove its IP
-sudo ifconfig $EXT_NET_IFACE up
-sudo ip addr flush dev $EXT_NET_IFACE
+sudo ifconfig $PUBLIC_INTERFACE up
+sudo ip addr flush dev $PUBLIC_INTERFACE
 
-sudo ovs-vsctl --no-wait -- --may-exist add-port $PUBLIC_BRIDGE $EXT_NET_IFACE
+sudo ovs-vsctl --no-wait -- --may-exist add-port $PUBLIC_BRIDGE $PUBLIC_INTERFACE
 
 #. $TOP_DIR/ryu_port_reg.sh
+QR_NS=`sudo ip netns list | grep qr`
+
+sudo ip link set p3 netns $QR_NS
+
+$TOP_DIR/tests/netns-run.sh $QR_NS "ifconfig p3 10.10.32.2/24 up"
+
+#sudo ovs-vsctl --no-wait -- --may-exist add-port br-ex p4 -- set interface p4 type=internal
+sudo ip link set eth7 netns $QR_NS
+$TOP_DIR/tests/netns-run.sh $QR_NS "ifconfig eth7 10.0.0.2/24 up"
+$TOP_DIR/tests/netns-run.sh $QR_NS "ip route add 10.12.0.0/16 via 10.0.0.12"
+$TOP_DIR/tests/netns-run.sh $QR_NS "ip route add 10.22.0.0/16 via 10.0.0.22"
 
 echo "Finished regular stack.sh"
 

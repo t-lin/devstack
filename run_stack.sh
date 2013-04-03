@@ -134,39 +134,13 @@ screen_it n-bmd "cd $NOVA_DIR && $NOVA_BIN_DIR/bm_deploy_server --config-dir=$BM
 screen_it n-cpu-bm "cd $NOVA_DIR && sg libvirtd \"$NOVA_BIN_DIR/nova-compute --config-dir=$BM_CONF\" $NL"
 screen_it n-cpu-bee2 "cd $NOVA_DIR && sg libvirtd \"$NOVA_BIN_DIR/nova-compute --config-dir=$BEE2_CONF\" $NL"
 
-PUBLIC_BRIDGE=br-ex
-
-if [[ $PUBLIC_INTERFACE != "" ]]; then
-  TEMP_BR=`sudo ovs-vsctl port-to-br $PUBLIC_INTERFACE`
-  if [[ $TEMP_BR != $PUBLIC_BRIDGE ]]; then
-     echo "removing $PUBLIC_INTERFACE from $TEMP_BR"
-     sudo ovs-vsctl del-port $TEMP_BR $PUBLIC_INTERFACE
-     TEMP_BR=""
-  fi
-  if [[ $TEMP_BR = "" ]]; then
-     echo "adding $PUBLIC_INTERFACE to $PUBLIC_BRIDGE"
-     sudo ovs-vsctl --no-wait -- --may-exist add-port $PUBLIC_BRIDGE $PUBLIC_INTERFACE
-  fi
-  sudo ifconfig $PUBLIC_INTERFACE up promisc
-fi
+#this scripts assumes bridges and interfaces are setup corretcky
 
 echo "done baremetal local.sh"
 
-. $TOP_DIR/port_reg.sh
-. $TOP_DIR/port_bond.sh
-$TOP_DIR/tenant-add.sh
-
-# Remove EXT_NET_IFACE from any bridges it may be connected to
-CURR_OVS=`sudo ovs-vsctl port-to-br $EXT_NET_IFACE`
-if [[ ! -z "$CURR_OVS" ]]; then
-  sudo ovs-vsctl del-port $CURR_OVS $EXT_NET_IFACE
-fi
-
-# Add interface to public bridge and remove its IP
-sudo ifconfig $EXT_NET_IFACE up
-sudo ip addr flush dev $EXT_NET_IFACE
-
-sudo ovs-vsctl --no-wait -- --may-exist add-port $PUBLIC_BRIDGE $EXT_NET_IFACE
+#. $TOP_DIR/port_reg.sh
+#. $TOP_DIR/port_bond.sh
+#$TOP_DIR/tenant-add.sh
 
 QR_NS=`sudo ip netns list | grep qr`
 
