@@ -864,6 +864,11 @@ if is_service_enabled quantum; then
     sudo ip netns list | grep q | xargs -I {} sudo ip netns del {} | true
 fi
 
+# Install required Software
+if is_service_enabled neo4j; then
+    install_graphdb
+fi
+
 # Check Out Source
 # ----------------
 
@@ -1454,6 +1459,9 @@ EOF
             screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.tr-edge-isolation"
         fi
     fi
+fi
+if is_service_enabled neo4j; then
+    start_graphdb
 fi
 if is_service_enabled whale; then
     start_whale

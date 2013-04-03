@@ -279,6 +279,14 @@ if [[ "$USE_OF" == "y" || "$USE_OF" == "Y" ]]; then
         read -p "FlowVisor port conflict with OpenFlow controller port. Choose another. " FV_PORT
       done
     fi
+
+    echo ''
+    read -p "Do you want to use SDI Manager? ([y]/n) " SDI_ENABLED
+    if [[ "$SDI_ENABLED" == "n" || "$FV_ENABLED" == "N" ]]; then
+        USE_SDI=false
+    else
+        USE_SDI=true
+    fi
   else
     read -p "Is FlowVisor in use on the controller node? ([n]/y)" FV_ENABLED
     if [[ "$FV_ENABLED" == "y" || "$FV_ENABLED" == "Y" ]]; then
@@ -365,6 +373,12 @@ if [[ $AGENT == 0 ]]; then
     fi
   else
     sed -i -e 's/GLANCE_API_ENABLED_/*/g' localrc
+  fi
+
+  if [[ $USE_SDI == "true" ]]; then
+    sed -i -e 's/SDI_ENABLED_//g' localrc
+  else
+    sed -i -e 's/SDI_ENABLED_/#/g' localrc
   fi
 
   sed -i -e 's/\${ENABLED_SERVICES}/'$ENABLED_SERVICES_CONTROL'/g' localrc

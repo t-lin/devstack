@@ -163,3 +163,23 @@ esac
 
 # 5Gb default volume backing file size
 VOLUME_BACKING_FILE_SIZE=${VOLUME_BACKING_FILE_SIZE:-5130M}
+
+# PRIVATE REPO
+GIT_BASE_PRIVATE=git@github.com
+
+# JANUS
+JANUS_REPO=${GIT_BASE_PRIVATE}:savi-dev/janus.git
+JANUS_BRANCH=devel-sch
+
+# JANUS CLIENT
+JANUSCLIENT_REPO=${GIT_BASE_PRIVATE}:savi-dev/python-janusclient.git
+JANUSCLIENT_BRANCH=master
+
+# WHALE
+WHALE_REPO=${GIT_BASE_PRIVATE}:savi-dev/whale.git
+WHALE_BRANCH=master
+
+# WHALE CLIENT
+WHALECLIENT_REPO=${GIT_BASE_PRIVATE}:savi-dev/python-whaleclient.git
+WHALECLIENT_BRANCH=master
+
