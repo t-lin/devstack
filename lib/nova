@@ -404,6 +404,10 @@ function install_nova() {
                 yum_install libcgroup-tools
             fi
         fi
+
+        # Install sensors
+        install_package lm-sensors
+        pip_install pysensors
     fi
 
     git_clone $NOVA_REPO $NOVA_DIR $NOVA_BRANCH
