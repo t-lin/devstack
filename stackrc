@@ -169,7 +169,7 @@ GIT_BASE_PRIVATE=git@github.com
 
 # JANUS
 JANUS_REPO=${GIT_BASE_PRIVATE}:savi-dev/janus.git
-JANUS_BRANCH=devel-sch
+JANUS_BRANCH=master
 
 # JANUS CLIENT
 JANUSCLIENT_REPO=${GIT_BASE_PRIVATE}:savi-dev/python-janusclient.git
