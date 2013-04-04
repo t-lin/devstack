@@ -29,8 +29,9 @@ set +o xtrace
 # Set up default directories
 WHALE_DIR=$DEST/whale
 WHALECLIENT_DIR=$DEST/python-whaleclient
-WHALE_CONF_DIR=${WHALE_CONF_DIR:-/etc/whale}
+WHALE_CONF_DIR=${WHALE_CONF_DIR:-$WHALE_DIR/etc}
 WHALE_CONF=$WHALE_CONF_DIR/whale-api.conf
+WHALE_CONF_SOURCE=${$WHALE_CONF_SOURCE:-$TOP_DIR/samples/whale/whale-vbox-graph.xml}
 WHALE_CONF_NODE=$WHALE_CONF_DIR/node.xml
 GRAPH_DB_DIR=$DEST/neo4j-graphdb
 GRAPH_DB_FILE=neo4j-community-1.9.M05-unix.tar.gz
@@ -103,6 +104,8 @@ function install_whale() {
 # install_whale() - Collect source and prepare
 function install_whaleclient() {
     git_clone $WHALE_CLIENT_REPO $WHALECLIENT_DIR $WHALECLIENT_BRANCH
+    # copy predefined graph to the configuration folder
+    cp -f $WHALE_CONF_SOURCE $WHALE_CONF_NODE
 }
 
 # start_graphdb() - Start running processes, including screen
@@ -111,7 +114,7 @@ function start_graphdb() {
     # copy properties to neo4j
     cp -f $WHALE_DIR/etc/*.properties $GRAPH_DB_DIR/conf
     screen_it neo4j "cd $GRAPH_DB_DIR && $GRAPH_DB_DIR/bin/neo4j console"
-    sleep 5
+    sleep 10
 }
 
 # start_whale() - Start running processes, including screen
