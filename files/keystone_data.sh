@@ -225,6 +225,41 @@ if [[ "$KEYSTONE_TYPE" = "LOCAL" ]]; then
             --description="Cinder Service")
 #  fi
 
+#JANUS
+#  if [[ "$ENABLED_SERVICES" =~ "janus" ]]; then
+
+    JANUS_USER=$(get_id keystone user-create \
+        --name=janus \
+        --pass="$SERVICE_PASSWORD" \
+        --tenant_id $SERVICE_TENANT \
+        --email=janus@savinetwork.ca)
+    keystone user-role-add \
+          --tenant_id $SERVICE_TENANT \
+          --user_id $JANUS_USER \
+          --role_id $ADMIN_ROLE
+
+    JANUS_SERVICE=$(get_id keystone service-create \
+            --name=janus \
+            --type=management \
+            --description="SDI Management Service")
+#Whale
+#  if [[ "$ENABLED_SERVICES" =~ "whale" ]]; then
+      WHALE_USER=$(get_id keystone user-create \
+        --name=whale \
+        --pass="$SERVICE_PASSWORD" \
+        --tenant_id $SERVICE_TENANT \
+        --email=whale@savinetwork.ca)
+      keystone user-role-add \
+          --tenant_id $SERVICE_TENANT \
+          --user_id $WHALE_USER \
+          --role_id $ADMIN_ROLE
+      WHALE_SERVICE=$(get_id keystone service-create \
+            --name=whale \
+            --type=configuration \
+            --description="SAVI Configuration Service")
+#  fi
+
+
 #Heat
 if [[ "$ENABLED_SERVICES" =~ "heat" ]]; then
 HEAT_USER=$(get_id keystone user-create --name=heat \
@@ -287,6 +322,12 @@ else
   fi
   if [[ "$ENABLED_SERVICES" =~ "heat" ]]; then
     CINDER_SERVICE=$(keystone service-id heat)
+  fi
+  if [[ "$ENABLED_SERVICES" =~ "janus" ]]; then
+    JANUS_SERVICE=$(keystone service-id janus)
+  fi
+  if [[ "$ENABLED_SERVICES" =~ "whale" ]]; then
+  WHALE_SERVICE=$(keystone service-id whale)
   fi
 fi
 
@@ -427,3 +468,29 @@ if [[ "$ENABLED_SERVICES" =~ "c-api" ]]; then
             --internalurl "http://$SERVICE_HOST:8776/v1/\$(tenant_id)s"
     fi
 fi
+# Janus
+if [[ "$ENABLED_SERVICES" =~ "janus" ]]; then
+    if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
+        keystone endpoint-list | grep ${REGION_NAME} | grep $JANUS_SERVICE | awk '{ print $2 }' | xargs -I {} keystone endpoint-delete {}
+        keystone endpoint-create \
+            --region ${REGION_NAME} \
+            --service_id $JANUS_SERVICE \
+            --publicurl "http://$PUBLIC_SERVICE_HOST:8081/v1.0" \
+            --adminurl "http://$SERVICE_HOST:8091/v1.0" \
+            --internalurl "http://$SERVICE_HOST:8091/v1.0"
+    fi
+fi
+
+# Whale
+if [[ "$ENABLED_SERVICES" =~ "whale" ]]; then
+    if [[ "$KEYSTONE_CATALOG_BACKEND" = 'sql' ]]; then
+        keystone endpoint-list | grep ${REGION_NAME} | grep $WHALE_SERVICE | awk '{ print $2 }' | xargs -I {} keystone endpoint-delete {}
+        keystone endpoint-create \
+            --region ${REGION_NAME} \
+            --service_id $WHALE_SERVICE \
+            --publicurl "http://$PUBLIC_SERVICE_HOST:8976/v1" \
+            --adminurl "http://$SERVICE_HOST:9976/v1" \
+            --internalurl "http://$SERVICE_HOST:9976/v1"
+    fi
+fi
+
