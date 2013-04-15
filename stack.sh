@@ -355,12 +355,30 @@ RYU_OFP_HOST=${RYU_OFP_HOST:-127.0.0.1}
 RYU_OFP_PORT=${RYU_OFP_PORT:-6633}
 
 if is_service_enabled fv; then
-    # Assuming FlowVisor installs to /etc/usr/flowvisor directory...
-    FV_DIR=/usr/etc/flowvisor
+    # Install FlowVisor if it hasn't been installed already
+    fv_installed=`sudo dpkg --list | grep flowvisor` || true
+
+    if [[ -z "$fv_installed" ]]; then
+        # Following instructions from https://github.com/OPENNETWORKINGLAB/flowvisor/wiki/Installation-from-Binary
+        echo "Installing FlowVisor, please wait..."
+        wget http://updates.onlab.us/GPG-KEY-ONLAB
+        sudo apt-key add GPG-KEY-ONLAB
+        sudo bash -c 'echo "deb http://updates.onlab.us/debian stable/" >> /etc/apt/sources.list'
+        sudo apt-get update
+        sudo apt-get -y --force-yes install flowvisor
+
+        # Generate database and configuration file
+        echo "Generating FlowVisor database and config file (one-time process)."
+        echo "Please press enter when prompted for the password"
+        sudo -u flowvisor fvconfig generate /etc/flowvisor/fv_config.json
+    fi
+
+    # Assuming FlowVisor installs to /etc/flowvisor directory...
+    FV_DIR=/etc/flowvisor
     if [[ ! -d $FV_DIR ]]; then
         sudo mkdir -p $FV_DIR
     fi
-    sudo chown `whoami` $FV_DIR
+    sudo chown flowvisor $FV_DIR
 
     if [[ -f $FV_DIR/fv_config.json ]]; then
         mv $FV_DIR/fv_config.json $FV_DIR/fv_config.json.backup
@@ -377,7 +395,7 @@ if is_service_enabled fv; then
 fi
 
 # FlowVisor Config File for Default Ryu Control
-RYU_FV_CONFIG=${RYU_FV_CONFIG:-/usr/etc/flowvisor/fv_config.json}
+RYU_FV_CONFIG=${RYU_FV_CONFIG:-/etc/flowvisor/fv_config.json}
 # FlowVisor Control Password File
 RYU_FV_PASSFILE=${RYU_FV_PASSFILE:-/usr/local/etc/flowvisor/passFile}
 # FlowVisor Non-Admin Slice Default Password
@@ -2284,21 +2302,9 @@ if is_service_enabled g-api; then
     done
 fi
 
-# Start up FlowVisor
+# Start up FlowVisor and give it time to start up
 if is_service_enabled fv; then
-    # Install FlowVisor if it hasn't been installed already
-    fv_installed=`sudo dpkg --list | grep flowvisor` || true
-
-    if [[ -z "$fv_installed" ]]; then
-        echo "Installing FlowVisor, please wait..."
-        sudo bash -c 'echo "deb http://updates.flowvisor.org/openflow/downloads/GENI/DEB/old_repo unstable/binary-\$(ARCH)/" >> /etc/apt/sources.list'
-        #sudo bash -c 'echo "deb http://updates.onlab.us/debian stable contrib" >> /etc/apt/sources.list'
-        sudo apt-get update
-        sudo apt-get -y --force-yes install flowvisor
-    fi
-
-    # Start up FlowVisor and give it time to start up
-    screen_it fv "cd ~ && sudo flowvisor -l $RYU_FV_CONFIG"
+    screen_it fv "cd ~ && sudo -u flowvisor flowvisor -l $RYU_FV_CONFIG"
     sleep 3
 fi
 
