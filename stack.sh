@@ -354,6 +354,11 @@ RYU_OFP_HOST=${RYU_OFP_HOST:-127.0.0.1}
 # Ryu OFP Port
 RYU_OFP_PORT=${RYU_OFP_PORT:-6633}
 
+# Janus API Host
+JANUS_API_HOST=${JANUS_API_HOST:-127.0.0.1}
+JANUS_API_PORT=${JANUS_API_PORT:-8095}
+JANUS_PUB_API_PORT=${JANUS_PUB_API_PORT:-8100}
+
 if is_service_enabled fv; then
     # Install FlowVisor if it hasn't been installed already
     fv_installed=`sudo dpkg --list | grep flowvisor` || true
@@ -947,6 +952,9 @@ if is_service_enabled ceilometer; then
     install_ceilometer
 fi
 if is_service_enabled ryu; then
+    if is_service_enabled janus; then
+        RYU_BRANCH=ryu2janus
+    fi
     git_clone $RYU_REPO $RYU_DIR $RYU_BRANCH
 fi
 if is_service_enabled whale; then
@@ -1111,9 +1119,14 @@ default-storage-engine = InnoDB" $MY_CONF
 
     restart_service $MYSQL
 
-    if is_service_enabled ryu; then
-        mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "DROP DATABASE IF EXISTS ryu;"
-        mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "CREATE DATABASE IF NOT EXISTS ryu CHARACTER SET utf8;"
+    if is_service_enabled janus; then
+        mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "DROP DATABASE IF EXISTS janus;"
+        mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "CREATE DATABASE IF NOT EXISTS janus CHARACTER SET utf8;"
+    else
+        if is_service_enabled ryu; then
+            mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "DROP DATABASE IF EXISTS ryu;"
+            mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "CREATE DATABASE IF NOT EXISTS ryu CHARACTER SET utf8;"
+        fi
     fi
 fi
 
@@ -1463,6 +1476,10 @@ EOF
             # Start Janus first (otherwise Ryu may attempt to send RESTful calls to Janus prior to Janus being active)
             screen_it janus "cd $JANUS_DIR && $JANUS_DIR/bin/janus-init"
 
+            cat << EOF >> $RYU_CONF
+--janus_host=$JANUS_API_HOST
+--janus_port=$JANUS_API_PORT
+EOF
             screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.ofctl_rest,ryu.app.ryu2janus,ryu.app.discovery,ryu.app.rest_savi"
             sleep 5
         else
