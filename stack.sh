@@ -928,9 +928,6 @@ fi
 if is_service_enabled ceilometer; then
     install_ceilometer
 fi
-if is_service_enabled ryu; then
-    git_clone $RYU_REPO $RYU_DIR $RYU_BRANCH
-fi
 if is_service_enabled whale; then
     install_whale
     install_whaleclient
@@ -939,7 +936,9 @@ if is_service_enabled janus; then
     git_clone $JANUS_REPO $JANUS_DIR $JANUS_BRANCH
     git_clone $JANUSCLIENT_REPO $JANUS_CLIENT_DIR $JANUSCLIENT_BRANCH
 fi
-
+if is_service_enabled ryu; then
+    git_clone $RYU_REPO $RYU_DIR $RYU_BRANCH
+fi
 # Initialization
 # ==============
 
@@ -984,10 +983,6 @@ fi
 if is_service_enabled cinder; then
     configure_cinder
 fi
-if is_service_enabled ryu; then
-    sudo apt-get -y --force-yes install python-dpkt
-    cd $RYU_DIR; sudo python setup.py develop
-fi
 if is_service_enabled whale; then
     configure_whale
     configure_whaleclient
@@ -996,9 +991,9 @@ if is_service_enabled janus; then
     setup_develop $JANUS_DIR
     setup_develop $JANUS_CLIENT_DIR
 fi
-if is_service_enabled whale; then
-    install_whale
-    install_whaleclient
+if is_service_enabled ryu; then
+    sudo apt-get -y --force-yes install python-dpkt
+    cd $RYU_DIR; sudo python setup.py develop
 fi
 
 if [[ $TRACK_DEPENDS = True ]] ; then
@@ -1342,6 +1337,13 @@ if is_service_enabled quantum; then
     cp -pr $QUANTUM_DIR/etc/quantum/rootwrap.d/* $Q_CONF_ROOTWRAP_D/
 fi
 
+if is_service_enabled neo4j; then
+    start_graphdb
+fi
+if is_service_enabled whale; then
+    start_whale
+fi
+
 # Quantum service (for controller node)
 if is_service_enabled q-svc; then
     echo_summary "in q-svc"
@@ -1460,13 +1462,6 @@ EOF
         fi
     fi
 fi
-if is_service_enabled neo4j; then
-    start_graphdb
-fi
-if is_service_enabled whale; then
-    start_whale
-fi
-
 # Quantum agent (for compute nodes)
 if is_service_enabled q-agt; then
     # Configure agent for plugin
@@ -1987,6 +1982,7 @@ else
         add_nova_opt "flat_interface=$FLAT_INTERFACE"
     fi
 fi
+
 if is_service_enabled whale; then
     init_whale
 fi
