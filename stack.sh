@@ -1447,7 +1447,7 @@ EOF
             # Start Janus first (otherwise Ryu may attempt to send RESTful calls to Janus prior to Janus being active)
             screen_it janus "cd $JANUS_DIR && $JANUS_DIR/bin/janus-init"
 
-            screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.ofctl_rest,ryu.app.ryu2janus,ryu.app.discovery,ryu.app.rest_savi"
+            screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.ofctl_rest,ryu.app.ryu2janus,ryu.app.discovery,ryu.app.rest_discovery"
             sleep 5
         else
             cat << EOF >> $RYU_CONF
