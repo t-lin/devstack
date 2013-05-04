@@ -356,8 +356,8 @@ RYU_OFP_PORT=${RYU_OFP_PORT:-6633}
 
 # Janus API Host
 JANUS_API_HOST=${JANUS_API_HOST:-127.0.0.1}
-JANUS_API_PORT=${JANUS_API_PORT:-8095}
-JANUS_PUB_API_PORT=${JANUS_PUB_API_PORT:-8100}
+JANUS_API_PORT=${JANUS_API_PORT:-8091}
+JANUS_PUB_API_PORT=${JANUS_PUB_API_PORT:-8081}
 
 if is_service_enabled fv; then
     # Install FlowVisor if it hasn't been installed already
@@ -1481,6 +1481,7 @@ EOF
 --janus_port=$JANUS_API_PORT
 EOF
             screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.ofctl_rest,ryu.app.ryu2janus,ryu.app.discovery,ryu.app.rest_savi"
+            #screen_it ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.ofctl_rest,ryu.app.ryu2janus"
             sleep 5
         else
             cat << EOF >> $RYU_CONF
