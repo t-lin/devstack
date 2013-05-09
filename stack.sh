@@ -386,15 +386,15 @@ if is_service_enabled fv; then
     sudo chown flowvisor $FV_DIR
 
     if [[ -f $FV_DIR/fv_config.json ]]; then
-        mv $FV_DIR/fv_config.json $FV_DIR/fv_config.json.backup
+        sudo mv $FV_DIR/fv_config.json $FV_DIR/fv_config.json.backup
     fi
-    cp $TOP_DIR/samples/of/fv_config.json $FV_DIR/fv_config.json
-    sed -i -e 's/0\.0\.0\.0/'$RYU_OFP_HOST'/g' $FV_DIR/fv_config.json
-    sed -i -e 's/6634/'$RYU_OFP_PORT'/g' $FV_DIR/fv_config.json
+    sudo cp $TOP_DIR/samples/of/fv_config.json $FV_DIR/fv_config.json
+    sudo sed -i -e 's/0\.0\.0\.0/'$RYU_OFP_HOST'/g' $FV_DIR/fv_config.json
+    sudo sed -i -e 's/6634/'$RYU_OFP_PORT'/g' $FV_DIR/fv_config.json
 
     if [[ ! -f $FV_DIR/passFile ]]; then
-        touch $FV_DIR/passFile
-        echo '' > $FV_DIR/passFile
+        sudo touch $FV_DIR/passFile
+        sudo echo '' > $FV_DIR/passFile
         echo ''
     fi
 fi
