@@ -11,6 +11,9 @@
     <key id="name" for="node" attr.name="name" attr.type="string"></key>
     <key id="nodeType" for="node" attr.name="nodeType" attr.type="string"></key>
     <key id="type" for="node" attr.name="type" attr.type="string"></key>
+    <key id="swdpid" for="node" attr.name="swdpid" attr.type="string"></key>
+    <key id="swport" for="node" attr.name="swport" attr.type="string"></key>
+    <key id="swname" for="node" attr.name="swname" attr.type="string"></key>
     <graph id="G" edgedefault="directed">
         <node id="0">
             <data key="rid">1</data>
@@ -40,9 +43,9 @@
             <data key="ifName">eth1</data>
             <data key="type">INTERFACE</data>
             <data key="macAddress">08:00:27:5e:08:bd</data>
-            <data key="sw_dpid">00000800275e08bd</data>
-            <data key="sw_port">1</data>
-            <data key="sw_name">00000800275e08bd_1</data>
+            <data key="swdpid">00000800275e08bd</data>
+            <data key="swport">16</data>
+            <data key="swname">00000800275e08bd_16</data>
         </node>
         <node id="4">
             <data key="rid">08:00:27:c1:b3:5b</data>
@@ -51,9 +54,9 @@
             <data key="ifName">eth2</data>
             <data key="type">INTERFACE</data>
             <data key="macAddress">08:00:27:c1:b3:5b</data>
-            <data key="sw_dpid">0000080027c1b35b</data>
-            <data key="sw_port">1</data>
-            <data key="sw_name">0000080027c1b35b_1</data>
+            <data key="swdpid">0000080027c1b35b</data>
+            <data key="swport">1</data>
+            <data key="swname">0000080027c1b35b_1</data>
         </node>
         <node id="5">
             <data key="rid">08:00:27:9b:8a:11</data>
@@ -62,9 +65,9 @@
             <data key="ifName">eth2</data>
             <data key="type">INTERFACE</data>
             <data key="macAddress">08:00:27:9b:8a:11</data>
-            <data key="sw_dpid">00000800279b8a11</data>
-            <data key="sw_port">1</data>
-            <data key="sw_name">00000800279b8a11_1</data>
+            <data key="swdpid">00000800279b8a11</data>
+            <data key="swport">1</data>
+            <data key="swname">00000800279b8a11_1</data>
         </node>
         <edge id="0" source="0" target="3" label="HAS"></edge>
         <edge id="1" source="0" target="3" label="CONNECTED"></edge>
