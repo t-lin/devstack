@@ -115,17 +115,31 @@ function start_graphdb() {
     cp -f $WHALE_DIR/etc/*.properties $GRAPH_DB_DIR/conf
     screen_it neo4j "cd $GRAPH_DB_DIR && $GRAPH_DB_DIR/bin/neo4j console"
     sleep 10
+    # initialize graph database based on pre-defined graph
+    SCRIPT="{\"script\":\"g.clear();g.loadGraphML(\\\"file:$WHALE_CONF_SOURCE\\\");\",\"params\":{}}"
+    curl -i -H 'Content-Type: application/json' -X POST -d "$SCRIPT" http://$HOST_IP:7474/db/data/ext/GremlinPlugin/graphdb/execute_script
+    sleep 5
+}
+
+function restart_graphdb() {
+    echo_summary "Starting graph db"
+    # copy properties to neo4j
+    cp -f $WHALE_DIR/etc/*.properties $GRAPH_DB_DIR/conf
+    screen_it neo4j "cd $GRAPH_DB_DIR && $GRAPH_DB_DIR/bin/neo4j console"
+    sleep 10
 }
 
 # start_whale() - Start running processes, including screen
 function start_whale() {
     echo_summary "Starting whale"
-    screen_it whale "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init"
+    screen_it w-sync "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init"
+    screen_it w-api "cd $WHALE_DIR && $WHALE_DIR/bin/whale-server"
 }
 
 # stop_whale() - Stop running processes (non-screen)
 function stop_whale() {
-    screen -S $SCREEN_NAME -p whale -X kill
+    screen -S $SCREEN_NAME -p w-sync -X kill
+    screen -S $SCREEN_NAME -p w-api -X kill
     screen -S $SCREEN_NAME -p neo4j -X kill
 }
 

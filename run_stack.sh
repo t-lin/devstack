@@ -11,6 +11,7 @@ source $TOP_DIR/lib/nova
 source $TOP_DIR/lib/glance
 source $TOP_DIR/lib/cinder
 source $TOP_DIR/lib/quantum
+source $TOP_DIR/lib/whale
 
 HORIZON_DIR=$DEST/horizon
 OPENSTACKCLIENT_DIR=$DEST/python-openstackclient
@@ -87,6 +88,10 @@ echo test  c-api "cd $CINDER_DIR && $CINDER_BIN_DIR/cinder-api --config-file $CI
 echo test  c-vol "cd $CINDER_DIR && $CINDER_BIN_DIR/cinder-volume --config-file $CINDER_CONF"
 echo test  c-sch "cd $CINDER_DIR && $CINDER_BIN_DIR/cinder-scheduler --config-file $CINDER_CONF"
 echo test  n-vol "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-volume"
+echo test neo4j "cd $GRAPH_DB_DIR && $GRAPH_DB_DIR/bin/neo4j console"
+echo test w-sync "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init"
+echo test w-api "cd $WHALE_DIR && $WHALE_DIR/bin/whale-server"
+echo test janus "cd $JANUS_DIR && $JANUS_DIR/bin/janus-init"
 echo test  ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.tr-edge-isolation"
 echo test  n-api "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-api"
 echo test  q-svc "cd $QUANTUM_DIR && python $QUANTUM_DIR/bin/quantum-server --config-file $Q_CONF_FILE --config-file /$Q_PLUGIN_CONF_FILE"
@@ -99,6 +104,10 @@ echo test n-bmd "cd $NOVA_DIR && $NOVA_BIN_DIR/bm_deploy_server --config-dir=$BM
 echo test n-cpu-bm "cd $NOVA_DIR && sg libvirtd \"$NOVA_BIN_DIR/nova-compute --config-dir=$BM_CONF\" $NL"
 echo test n-cpu-bee2 "cd $NOVA_DIR && sg libvirtd \"$NOVA_BIN_DIR/nova-compute --config-dir=$BEE2_CONF\" $NL"
 
+screen_it neo4j "cd $GRAPH_DB_DIR && $GRAPH_DB_DIR/bin/neo4j console"
+screen_it w-sync "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init"
+screen_it w-api "cd $WHALE_DIR && $WHALE_DIR/bin/whale-server"
+screen_it janus "cd $JANUS_DIR && $JANUS_DIR/bin/janus-init"
 screen_it  ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.tr-edge-isolation"
 sleep 5
 screen_it  n-api "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-api"
