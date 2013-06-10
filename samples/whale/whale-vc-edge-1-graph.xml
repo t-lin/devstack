@@ -44,7 +44,7 @@
             <data key="rid">GPU</data>
             <data key="servername">GPU</data>
             <data key="layer">PHYSICAL</data>
-            <data key="nodeType">SERVER</data>
+            <data key="nodeType">GPU</data>
             <data key="type">NODE</data>
             <data key="availability">False</data>
         </node>
