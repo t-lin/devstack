@@ -375,7 +375,7 @@ if is_service_enabled fv; then
         # Generate database and configuration file
         echo "Generating FlowVisor database and config file (one-time process)."
         echo "Please press enter when prompted for the password"
-        sudo -u flowvisor fvconfig generate /etc/flowvisor/fv_config.json
+        sudo fvconfig generate /etc/flowvisor/fv_config.json
     fi
 
     # Assuming FlowVisor installs to /etc/flowvisor directory...
@@ -2321,7 +2321,7 @@ fi
 
 # Start up FlowVisor and give it time to start up
 if is_service_enabled fv; then
-    screen_it fv "cd ~ && sudo -u flowvisor flowvisor -l $RYU_FV_CONFIG"
+    screen_it fv "cd ~ && sudo flowvisor -l $RYU_FV_CONFIG"
     sleep 3
 fi
 
