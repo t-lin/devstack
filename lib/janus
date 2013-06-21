@@ -84,7 +84,6 @@ function configure_janus() {
 
     if [[ "$JANUS_CONF_DIR" != "$JANUS_DIR/etc" ]]; then
         cp -p $JANUS_DIR/etc/janus-api.conf $JANUS_CONF
-        cp -p $JANUS_DIR/etc/policy.json $JANUS_CONF_DIR
     fi
 
     # Rewrite stock ``keystone.conf``
