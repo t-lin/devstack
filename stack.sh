@@ -314,6 +314,7 @@ source $TOP_DIR/lib/ceilometer
 source $TOP_DIR/lib/heat
 source $TOP_DIR/lib/quantum
 source $TOP_DIR/lib/whale
+source $TOP_DIR/lib/janus
 
 # Set the destination directories for OpenStack projects
 HORIZON_DIR=$DEST/horizon
@@ -971,8 +972,8 @@ if is_service_enabled whale; then
     install_whaleclient
 fi
 if is_service_enabled janus; then
-    git_clone $JANUS_REPO $JANUS_DIR $JANUS_BRANCH
-    git_clone $JANUSCLIENT_REPO $JANUS_CLIENT_DIR $JANUSCLIENT_BRANCH
+    install_janus
+    install_janusclient
 fi
 if is_service_enabled ryu; then
     git_clone $RYU_REPO $RYU_DIR $RYU_BRANCH
@@ -1026,8 +1027,8 @@ if is_service_enabled whale; then
     configure_whaleclient
 fi
 if is_service_enabled janus; then
-    setup_develop $JANUS_DIR
-    setup_develop $JANUS_CLIENT_DIR
+    configure_janus
+    configure_janusclient
 fi
 if is_service_enabled ryu; then
     sudo apt-get -y --force-yes install python-dpkt
@@ -1489,7 +1490,7 @@ EOF
 
         if is_service_enabled janus; then
             # Start Janus first (otherwise Ryu may attempt to send RESTful calls to Janus prior to Janus being active)
-            screen_it janus "cd $JANUS_DIR && $JANUS_DIR/bin/janus-init"
+            start_janus
 
             cat << EOF >> $RYU_CONF
 --janus_host=$JANUS_API_HOST
