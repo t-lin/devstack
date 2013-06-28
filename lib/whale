@@ -189,7 +189,7 @@ function restart_graphdb() {
 function start_whale() {
     echo_summary "Starting whale"
     screen_it w-sync "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init --config-file $WHALE_CONF"
-    screen_it w-api "cd $WHALE_DIR && $WHALE_DIR/bin/whale-server -- config-file WHALE_CONF"
+    screen_it w-api "cd $WHALE_DIR && $WHALE_DIR/bin/whale-server -- config-file $WHALE_CONF"
 }
 
 # stop_whale() - Stop running processes (non-screen)
