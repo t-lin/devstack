@@ -2038,6 +2038,9 @@ if is_service_enabled whale; then
     init_whale
 fi
 
+if is_service_enabled janus; then
+    init_janus
+fi
 # All nova-compute workers need to know the vnc configuration options
 # These settings don't hurt anything if n-xvnc and n-novnc are disabled
 if is_service_enabled n-cpu; then
