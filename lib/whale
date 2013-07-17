@@ -29,13 +29,17 @@ set +o xtrace
 # Set up default directories
 WHALE_DIR=$DEST/whale
 WHALECLIENT_DIR=$DEST/python-whaleclient
-WHALE_CONF_DIR=${WHALE_CONF_DIR:-$WHALE_DIR/etc}
-WHALE_CONF=$WHALE_CONF_DIR/whale-api.conf
+WHALE_CONF_DIR=${WHALE_CONF_DIR:-/etc/whale}
+WHALE_CONF=$WHALE_CONF_DIR/whale.conf
+WHALECLIENT_DIR=$DEST/python-whaleclient
 WHALE_CONF_SOURCE=${WHALE_CONF_SOURCE:-$TOP_DIR/samples/whale/whale-vbox-graph.xml}
 WHALE_CONF_NODE=$WHALE_CONF_DIR/node.xml
+WHALE_CONF_CLOUD_UPDATE_TIMEOUT=${WHALE_CONF_CLOUD_UPDATE_TIMEOUT:-10}
+WHALE_CONF_CLOUD_V_UPDATE_TIMEOUT=${WHALE_CONF_CLOUD_V_UPDATE_TIMEOUT:-10}
+WHALE_CONF_NETWORK_UPDATE_TIMEOUT=${WHALE_CONF_NETWORK_UPDATE_TIMEOUT:-10}
 GRAPH_DB_DIR=$DEST/neo4j-graphdb
-GRAPH_DB_FILE=neo4j-community-1.9.M05-unix.tar.gz
-GRAPH_DB_INSTALLED_DIR=neo4j-community-1.9.M05
+GRAPH_DB_FILE=${GRAPH_DB_FILE:-neo4j-community-1.9.M05-unix.tar.gz}
+GRAPH_DB_INSTALLED_DIR=${GRAPH_DB_INSTALLED_DIR:-neo4j-community-1.9.M05}
 
 # Support entry points installation of console scripts
 if [[ -d $WHALE_DIR/bin ]]; then
@@ -45,9 +49,25 @@ else
 fi
 
 # Glance connection info.  Note the port must be specified.
-WHALE_HOSTPORT=${WHALE_HOSTPORT:-$SERVICE_HOST:9976}
+WHALE_HOST=${WHALE_HOST:-$SERVICE_HOST}
+WHALE_PORT=${WHALE_PORT:-9976}
+WHALE_SERVICE_HOST=${WHALE_SERVICE_HOST:-$PUBLIC_SERVICE_HOST}
+WHALE_SERVICE_PORT=${WHALE_SERVICE_PORT:-8976}
+WHALE_SERVICE_PROTOCOL=${WHALE_SERVICE_PROTOCOL:-http}
 
+# Set Keystone interface configuration
+KEYSTONE_API_PORT=${KEYSTONE_API_PORT:-5000}
+KEYSTONE_AUTH_HOST=${KEYSTONE_AUTH_HOST:-$SERVICE_HOST}
+KEYSTONE_AUTH_PORT=${KEYSTONE_AUTH_PORT:-35357}
+KEYSTONE_AUTH_PROTOCOL=${KEYSTONE_AUTH_PROTOCOL:-http}
+KEYSTONE_SERVICE_HOST=${KEYSTONE_AUTH_HOST:-$SERVICE_HOST}
+KEYSTONE_SERVICE_PORT=${KEYSTONE_SERVICE_PORT:-5000}
+KEYSTONE_SERVICE_PROTOCOL=${KEYSTONE_SERVICE_PROTOCOL:-http}
 
+GRAPH_DB_HOST=${GRAPH_DB_HOST:-$WHALE_HOST}
+GRAPH_DB_PORT=${GRAPH_DB_PORT:-7474}
+GRAPH_DB_PROTOCOL=${GRAPH_DB_PROTOCOL:-http}
+GRAPH_DB_URI=$GRAPH_DB_PROTOCOL://$GRAPH_DB_HOST:$GRAPH_DB_PORT/db/data
 # Entry Points
 # ------------
 
@@ -63,6 +83,45 @@ function cleanup_whale() {
 # configure_whale() - Set config files, create data dirs, etc
 function configure_whale() {
     setup_develop $WHALE_DIR
+
+    if [[ ! -d $WHALE_CONF_DIR ]]; then
+        sudo mkdir -p $WHALE_CONF_DIR
+        sudo chown `whoami` $WHALE_CONF_DIR
+    fi
+
+    if [[ "$WHALE_CONF_DIR" != "$WHALE_DIR/etc" ]]; then
+        cp -p $WHALE_DIR/etc/whale-api.conf $WHALE_CONF
+    fi
+
+    # Rewrite stock ``keystone.conf``
+    iniset $WHALE_CONF sql connection "$BASE_SQL_CONN/nova?charset=utf8"
+
+    iniset $WHALE_CONF filter:authtoken auth_host $GLANCE_REGISTRY_AUTH_HOST
+    iniset $WHALE_CONF filter:authtoken auth_port $GLANCE_REGISTRY_AUTH_PORT
+    iniset $WHALE_CONF filter:authtoken auth_protocol $KEYSTONE_AUTH_PROTOCOL
+    iniset $WHALE_CONF filter:authtoken auth_uri $KEYSTONE_SERVICE_PROTOCOL://$GLANCE_REGISTRY_AUTH_HOST:$KEYSTONE_SERVICE_PORT/
+    iniset $WHALE_CONF filter:authtoken admin_tenant_name $SERVICE_TENANT_NAME
+    iniset $WHALE_CONF filter:authtoken admin_user glance
+    iniset $WHALE_CONF filter:authtoken admin_password $SERVICE_PASSWORD
+
+    iniset $WHALE_CONF openstack db_host $MYSQL_HOST
+    iniset $WHALE_CONF openstack db_user $MYSQL_USER
+    iniset $WHALE_CONF openstack db_pass $MYSQL_PASSWORD
+
+    iniset $WHALE_CONF network of_ctrl_host $RYU_OFP_HOST
+    iniset $WHALE_CONF network of_ctrl_port $RYU_OFP_PORT
+
+    iniset $WHALE_CONF ryu wsapi_host $RYU_API_HOST
+    iniset $WHALE_CONF ryu wsapi_port $RYU_API_PORT
+
+    iniset $WHALE_CONF neo4j graphdb_uri $GRAPH_DB_URI
+    iniset $WHALE_CONF neo4j initial_graph $WHALE_CONF_SOURCE
+
+    iniset $WHALE_CONF timeout cloudupdate_timeout $WHALE_CONF_CLOUD_UPDATE_TIMEOUT
+    iniset $WHALE_CONF timeout cloudupdate_timeout_v $WHALE_CONF_CLOUD_V_UPDATE_TIMEOUT
+    iniset $WHALE_CONF timeout networkupdate_timeout $WHALE_CONF_NETWORK_UPDATE_TIMEOUT
+
+
 }
 
 # configure_whale() - Set config files, create data dirs, etc
@@ -72,8 +131,7 @@ function configure_whaleclient() {
 
 # init_whale() - Initialize databases, etc.
 function init_whale() {
-    add_nova_opt "janus_host=$JANUS_API_HOST"
-    add_nova_opt "janus_port=$JANUS_API_PORT"
+    :
 }
 
 function install_graphdb() {
@@ -104,8 +162,6 @@ function install_whale() {
 # install_whale() - Collect source and prepare
 function install_whaleclient() {
     git_clone $WHALE_CLIENT_REPO $WHALECLIENT_DIR $WHALECLIENT_BRANCH
-    # copy predefined graph to the configuration folder
-    cp -f $WHALE_CONF_SOURCE $WHALE_CONF_NODE
 }
 
 # start_graphdb() - Start running processes, including screen
@@ -132,8 +188,8 @@ function restart_graphdb() {
 # start_whale() - Start running processes, including screen
 function start_whale() {
     echo_summary "Starting whale"
-    screen_it w-sync "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init"
-    screen_it w-api "cd $WHALE_DIR && $WHALE_DIR/bin/whale-server"
+    screen_it w-sync "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init --config-file $WHALE_CONF"
+    screen_it w-api "cd $WHALE_DIR && $WHALE_DIR/bin/whale-server --config-file $WHALE_CONF"
 }
 
 # stop_whale() - Stop running processes (non-screen)

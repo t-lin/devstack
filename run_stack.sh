@@ -22,6 +22,8 @@ SWIFTCLIENT_DIR=$DEST/python-swiftclient
 QUANTUM_DIR=$DEST/quantum
 QUANTUM_CLIENT_DIR=$DEST/python-quantumclient
 RYU_DIR=$DEST/ryu
+JANUS_DIR=$DEST/janus
+WHALE_DIR=$DEST/whale
 
 AGENT_BINARY="$QUANTUM_DIR/bin/quantum-ryu-agent"
 AGENT_DHCP_BINARY="$QUANTUM_DIR/bin/quantum-dhcp-agent"
@@ -41,6 +43,9 @@ RYU_FV_CONFIG=${RYU_FV_CONFIG:-/usr/etc/flowvisor/fv_config.json}
 
 RYU_CONF_DIR=/etc/ryu
 RYU_CONF=$RYU_CONF_DIR/ryu.conf
+
+MANAGEMENT_IP_IFACE=${MANAGEMENT_IP_IFACE:-p3}
+MANAGEMENT_IP_RANGE=${MANAGEMENT_IP_RANGE:-10.10.20.2/24}
 
 BM_CONF=/etc/nova-bm
 BEE2_CONF=/etc/nova-bee2
@@ -89,10 +94,10 @@ echo test  c-vol "cd $CINDER_DIR && $CINDER_BIN_DIR/cinder-volume --config-file 
 echo test  c-sch "cd $CINDER_DIR && $CINDER_BIN_DIR/cinder-scheduler --config-file $CINDER_CONF"
 echo test  n-vol "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-volume"
 echo test neo4j "cd $GRAPH_DB_DIR && $GRAPH_DB_DIR/bin/neo4j console"
-echo test w-sync "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init"
-echo test w-api "cd $WHALE_DIR && $WHALE_DIR/bin/whale-server"
+echo test w-sync "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init --config-file $WHALE_CONF"
+echo test w-api "cd $WHALE_DIR && $WHALE_DIR/bin/whale-server --config-file $WHALE_CONF"
 echo test janus "cd $JANUS_DIR && $JANUS_DIR/bin/janus-init"
-echo test  ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.tr-edge-isolation"
+echo test  ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.ofctl_rest,ryu.app.ryu2janus,ryu.app.discovery,ryu.app.rest_discovery"
 echo test  n-api "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-api"
 echo test  q-svc "cd $QUANTUM_DIR && python $QUANTUM_DIR/bin/quantum-server --config-file $Q_CONF_FILE --config-file /$Q_PLUGIN_CONF_FILE"
 echo test  q-dhcp "python $AGENT_DHCP_BINARY --config-file $Q_CONF_FILE --config-file=$Q_DHCP_CONF_FILE"
@@ -108,7 +113,7 @@ screen_it neo4j "cd $GRAPH_DB_DIR && $GRAPH_DB_DIR/bin/neo4j console"
 screen_it w-sync "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init"
 screen_it w-api "cd $WHALE_DIR && $WHALE_DIR/bin/whale-server"
 screen_it janus "cd $JANUS_DIR && $JANUS_DIR/bin/janus-init"
-screen_it  ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.rest,ryu.app.tr-edge-isolation"
+screen_it  ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.ofctl_rest,ryu.app.ryu2janus,ryu.app.discovery,ryu.app.rest_discovery"
 sleep 5
 screen_it  n-api "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-api"
 screen_it  g-api "cd $GLANCE_DIR; $GLANCE_BIN_DIR/glance-api --config-file=$GLANCE_CONF_DIR/glance-api.conf"
@@ -153,9 +158,9 @@ echo "done baremetal local.sh"
 
 QR_NS=`sudo ip netns list | grep qr`
 
-sudo ip link set p3 netns $QR_NS
+sudo ip link set $MANAGEMENT_IP_IFACE netns $QR_NS
 
-$TOP_DIR/tests/netns-run.sh $QR_NS "ifconfig p3 10.10.32.2/24 up"
+$TOP_DIR/tests/netns-run.sh $QR_NS "ifconfig $MANAGEMENT_IP_IFACE $MANAGEMENT_IP_RANGE up"
 
 #sudo ovs-vsctl --no-wait -- --may-exist add-port br-ex p4 -- set interface p4 type=internal
 sudo ip link set eth7 netns $QR_NS

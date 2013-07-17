@@ -314,6 +314,7 @@ source $TOP_DIR/lib/ceilometer
 source $TOP_DIR/lib/heat
 source $TOP_DIR/lib/quantum
 source $TOP_DIR/lib/whale
+source $TOP_DIR/lib/janus
 
 # Set the destination directories for OpenStack projects
 HORIZON_DIR=$DEST/horizon
@@ -326,6 +327,7 @@ QUANTUM_DIR=$DEST/quantum
 QUANTUM_CLIENT_DIR=$DEST/python-quantumclient
 RYU_DIR=$DEST/ryu
 JANUS_DIR=$DEST/janus
+WHALE_DIR=$DEST/whale
 JANUS_CLIENT_DIR=$DEST/python-janusclient
 
 # Default Quantum Plugin
@@ -358,6 +360,14 @@ RYU_OFP_PORT=${RYU_OFP_PORT:-6633}
 JANUS_API_HOST=${JANUS_API_HOST:-127.0.0.1}
 JANUS_API_PORT=${JANUS_API_PORT:-8091}
 JANUS_PUB_API_PORT=${JANUS_PUB_API_PORT:-8081}
+
+# Janus Policy
+JANUS_POLICY_FILE=${JANUS_POLICY_FILE:-$JANUS_DIR/etc/policy.json}
+
+# Whale Policy
+WHALE_POLICY_FILE=${WHALE_POLICY_FILE:-$WHALE_DIR/etc/policy.json}
+
+
 
 if is_service_enabled fv; then
     # Install FlowVisor if it hasn't been installed already
@@ -959,8 +969,8 @@ if is_service_enabled whale; then
     install_whaleclient
 fi
 if is_service_enabled janus; then
-    git_clone $JANUS_REPO $JANUS_DIR $JANUS_BRANCH
-    git_clone $JANUSCLIENT_REPO $JANUS_CLIENT_DIR $JANUSCLIENT_BRANCH
+    install_janus
+    install_janusclient
 fi
 if is_service_enabled ryu; then
     git_clone $RYU_REPO $RYU_DIR $RYU_BRANCH
@@ -1014,8 +1024,8 @@ if is_service_enabled whale; then
     configure_whaleclient
 fi
 if is_service_enabled janus; then
-    setup_develop $JANUS_DIR
-    setup_develop $JANUS_CLIENT_DIR
+    configure_janus
+    configure_janusclient
 fi
 if is_service_enabled ryu; then
     sudo apt-get -y --force-yes install python-dpkt
@@ -1159,6 +1169,7 @@ fi
     SERVICE_TOKEN=$SERVICE_TOKEN SERVICE_ENDPOINT=$SERVICE_ENDPOINT SERVICE_HOST=$SERVICE_HOST \
     S3_SERVICE_PORT=$S3_SERVICE_PORT KEYSTONE_CATALOG_BACKEND=$KEYSTONE_CATALOG_BACKEND KEYSTONE_TYPE=$KEYSTONE_TYPE KEYSTONE_SERVICE_HOST=$KEYSTONE_SERVICE_HOST \
     DEVSTACK_DIR=$TOP_DIR PUBLIC_SERVICE_HOST=$PUBLIC_SERVICE_HOST ENABLED_SERVICES=$ENABLED_SERVICES HEAT_API_CFN_PORT=$HEAT_API_CFN_PORT REGION_NAME=$REGION_NAME REGIONS=$REGIONS \
+    JANUS_POLICY_FILE=$JANUS_POLICY_FILE WHALE_POLICY_FILE=$WHALE_POLICY_FILE\
         bash -x $FILES/keystone_data.sh
 
     # Set up auth creds now that keystone is bootstrapped
@@ -1477,7 +1488,7 @@ EOF
 
         if is_service_enabled janus; then
             # Start Janus first (otherwise Ryu may attempt to send RESTful calls to Janus prior to Janus being active)
-            screen_it janus "cd $JANUS_DIR && $JANUS_DIR/bin/janus-init"
+            start_janus
 
             cat << EOF >> $RYU_CONF
 --janus_host=$JANUS_API_HOST
@@ -2027,6 +2038,9 @@ if is_service_enabled whale; then
     init_whale
 fi
 
+if is_service_enabled janus; then
+    init_janus
+fi
 # All nova-compute workers need to know the vnc configuration options
 # These settings don't hurt anything if n-xvnc and n-novnc are disabled
 if is_service_enabled n-cpu; then
