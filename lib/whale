@@ -20,7 +20,6 @@
 XTRACE=$(set +o | grep xtrace)
 set +o xtrace
 
-
 # Defaults
 # --------
 
@@ -37,9 +36,9 @@ WHALE_CONF_NODE=$WHALE_CONF_DIR/node.xml
 WHALE_CONF_CLOUD_UPDATE_TIMEOUT=${WHALE_CONF_CLOUD_UPDATE_TIMEOUT:-10}
 WHALE_CONF_CLOUD_V_UPDATE_TIMEOUT=${WHALE_CONF_CLOUD_V_UPDATE_TIMEOUT:-10}
 WHALE_CONF_NETWORK_UPDATE_TIMEOUT=${WHALE_CONF_NETWORK_UPDATE_TIMEOUT:-10}
-GRAPH_DB_DIR=$DEST/neo4j-graphdb
-GRAPH_DB_FILE=${GRAPH_DB_FILE:-neo4j-community-1.9.M05-unix.tar.gz}
-GRAPH_DB_INSTALLED_DIR=${GRAPH_DB_INSTALLED_DIR:-neo4j-community-1.9.M05}
+
+GRAPH_DB_DIR=/etc/init.d
+GRAPH_DB_CONF_DIR=/etc/neo4j
 
 # Support entry points installation of console scripts
 if [[ -d $WHALE_DIR/bin ]]; then
@@ -146,22 +145,21 @@ function init_whale() {
 }
 
 function install_graphdb() {
-    if [[ ! -d ${GRAPH_DB_DIR} ]]; then
-        if [[ ! -f ${GRAPH_DB_FILE} ]]; then
-            printf "===========================================================\n"
-            printf "Neo4j Graph Database is not installed in ${GRAPH_DB_DIR}\n"
-            printf "Please, download Neo4j Graph Database Community version for Linux/Mac from http://www.neo4j.com/download\n"
-            printf "The current version is ${GRAPH_DB_FILE} and put the file in the ${TOP_DIR}\n"
-            printf "===========================================================\n"
-            exit 1
-        else
-            printf "${GRAPH_DB_FILE} exists\n"
-            tar xvzf ${GRAPH_DB_FILE}
-            mv ${TOP_DIR}/${GRAPH_DB_INSTALLED_DIR} ${GRAPH_DB_DIR}
-            echo_summary "Installing Graph Database"
-        fi
+    neo4j_installed=$(dpkg -s neo4j|grep installed)
+    if [[ "" == $neo4j_installed ]]; then
+        echo "Installing Neo4j, please wait..." 
+        # Import and Download neo4j signing key
+        wget http://debian.neo4j.org/neotechnology.gpg.key
+        sudo apt-key add neotechnology.gpg.key
+        sudo bash -c 'echo "deb http://debian.neo4j.org/repo stable/" >> /etc/apt/sources.list'
+        # Find out about the files in our repository
+        sudo apt-get update
+        # Install Neo4j, community edition
+        sudo apt-get -y --force-yes install neo4j
+        # stop neo4j service
+        sudo $GRAPH_DB_DIR/neo4j-service stop
     else
-        echo_summary "Neo4j Graph Database has been already installed in ${GRAPH_DB}\n"
+        echo_summary "Neo4j Graph Database has been already installed\n"
     fi 
 }
 
@@ -178,9 +176,17 @@ function install_whaleclient() {
 # start_graphdb() - Start running processes, including screen
 function start_graphdb() {
     echo_summary "Starting graph db"
+    # if neo4j service is running, stop
+    neo4j_status=$(sudo -u neo4j $GRAPH_DB_DIR/neo4j-service status | grep not)
+    if [[ "" == $neo4j_status ]]; then
+        sudo $GRAPH_DB_DIR/neo4j-service stop
+    else
+        echo_summary "Neo4j is not runnning"
+    fi   
+    sleep 5
     # copy properties to neo4j
-    cp -f $WHALE_DIR/etc/*.properties $GRAPH_DB_DIR/conf
-    screen_it neo4j "cd $GRAPH_DB_DIR && $GRAPH_DB_DIR/bin/neo4j console"
+    sudo -u neo4j cp -f $WHALE_DIR/etc/*.properties $GRAPH_DB_CONF_DIR
+    screen_it neo4j "cd $GRAPH_DB_CONF_DIR && sudo -u neo4j $GRAPH_DB_DIR/neo4j-service console"
     sleep 10
     # initialize graph database based on pre-defined graph
     SCRIPT="{\"script\":\"g.clear();g.loadGraphML(\\\"file:$WHALE_CONF_SOURCE\\\");\",\"params\":{}}"
