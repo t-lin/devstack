@@ -959,9 +959,6 @@ if is_service_enabled ceilometer; then
     install_ceilometer
 fi
 if is_service_enabled ryu; then
-    if is_service_enabled janus; then
-        RYU_BRANCH=ryu2janus
-    fi
     git_clone $RYU_REPO $RYU_DIR $RYU_BRANCH
 fi
 if is_service_enabled whale; then
@@ -1127,11 +1124,9 @@ default-storage-engine = InnoDB" $MY_CONF
     if is_service_enabled janus; then
         mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "DROP DATABASE IF EXISTS janus;"
         mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "CREATE DATABASE IF NOT EXISTS janus CHARACTER SET utf8;"
-    else
-        if is_service_enabled ryu; then
-            mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "DROP DATABASE IF EXISTS ryu;"
-            mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "CREATE DATABASE IF NOT EXISTS ryu CHARACTER SET utf8;"
-        fi
+    elif is_service_enabled ryu; then
+        mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "DROP DATABASE IF EXISTS ryu;"
+        mysql -u$MYSQL_USER -p$MYSQL_PASSWORD -e "CREATE DATABASE IF NOT EXISTS ryu CHARACTER SET utf8;"
     fi
 fi
 
@@ -1345,7 +1340,11 @@ if is_service_enabled quantum; then
         Q_PLUGIN_CONF_PATH=etc/quantum/plugins/ryu
         Q_PLUGIN_CONF_FILENAME=ryu.ini
         Q_DB_NAME="ovs_quantum"
-        Q_PLUGIN_CLASS="quantum.plugins.ryu.ryu_quantum_plugin.RyuQuantumPluginV2"
+        if is_service_enabled janus; then
+            Q_PLUGIN_CLASS="quantum.plugins.janus.janus_quantum_plugin.JanusQuantumPluginV2"
+        else
+            Q_PLUGIN_CLASS="quantum.plugins.ryu.ryu_quantum_plugin.RyuQuantumPluginV2"
+        fi
         if [[ "$NOVA_USE_QUANTUM_API" = "v1" ]]; then
             Q_PLUGIN_CLASS="quantum.plugins.linuxbridge.LinuxBridgePlugin.LinuxBridgePlugin"
         elif [[ "$NOVA_USE_QUANTUM_API" = "v2" ]]; then
@@ -1560,10 +1559,11 @@ if is_service_enabled q-agt; then
             fi
             if is_service_enabled janus; then
                 iniset /$Q_PLUGIN_CONF_FILE OVS openflow_rest_api $JANUS_API_HOST:$JANUS_API_PORT
+                AGENT_BINARY="$QUANTUM_DIR/quantum/plugins/janus/agent/janus_quantum_agent"
             else
                 iniset /$Q_PLUGIN_CONF_FILE OVS openflow_rest_api $RYU_API_HOST:$RYU_API_PORT
+                AGENT_BINARY="$QUANTUM_DIR/bin/quantum-ryu-agent"
             fi
-            AGENT_BINARY="$QUANTUM_DIR/bin/quantum-ryu-agent"
         else
             AGENT_BINARY="$QUANTUM_DIR/bin/quantum-openvswitch-agent"
         fi
@@ -1609,11 +1609,12 @@ if is_service_enabled q-dhcp; then
     elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
         iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.BridgeInterfaceDriver
     elif [[ "$Q_PLUGIN" = "ryu" ]]; then
-        iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.RyuInterfaceDriver
         if is_service_enabled janus; then
-            iniset $Q_DHCP_CONF_FILE DEFAULT ryu_api_host $JANUS_API_HOST:$JANUS_API_PORT
+            iniset $Q_DHCP_CONF_FILE DEFAULT janus_api_host $JANUS_API_HOST:$JANUS_API_PORT
+            iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.plugins.janus.linux.interface.JanusInterfaceDriver
         else
             iniset $Q_DHCP_CONF_FILE DEFAULT ryu_api_host $RYU_API_HOST:$RYU_API_PORT
+            iniset $Q_DHCP_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.RyuInterfaceDriver
         fi
     fi
 fi
@@ -1641,11 +1642,12 @@ if is_service_enabled q-l3; then
         if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
             iniset $Q_L3_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.OVSInterfaceDriver
         elif [[ "$Q_PLUGIN" = "ryu" ]]; then
-            iniset $Q_L3_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.RyuInterfaceDriver
             if is_service_enabled janus; then
-                iniset $Q_L3_CONF_FILE DEFAULT ryu_api_host $JANUS_API_HOST:$JANUS_API_PORT
+                iniset $Q_L3_CONF_FILE DEFAULT janus_api_host $JANUS_API_HOST:$JANUS_API_PORT
+                iniset $Q_L3_CONF_FILE DEFAULT interface_driver quantum.plugins.janus.linux.interface.JanusInterfaceDriver
             else
                 iniset $Q_L3_CONF_FILE DEFAULT ryu_api_host $RYU_API_HOST:$RYU_API_PORT
+                iniset $Q_L3_CONF_FILE DEFAULT interface_driver quantum.agent.linux.interface.RyuInterfaceDriver
             fi
         fi
         iniset $Q_L3_CONF_FILE DEFAULT external_network_bridge $PUBLIC_BRIDGE
@@ -2011,12 +2013,14 @@ if is_service_enabled quantum; then
     elif [[ "$Q_PLUGIN" = "linuxbridge" ]]; then
         NOVA_VIF_DRIVER="nova.virt.libvirt.vif.QuantumLinuxBridgeVIFDriver"
     elif [[ "$Q_PLUGIN" = "ryu" ]]; then
-        NOVA_VIF_DRIVER="quantum.plugins.ryu.nova.vif.LibvirtOpenVswitchOFPRyuDriver"
-        LINUXNET_VIF_DRIVER="quantum.plugins.ryu.nova.linux_net.LinuxOVSRyuInterfaceDriver"
         if is_service_enabled janus; then
-            add_nova_opt "libvirt_ovs_ryu_api_host=$JANUS_API_HOST:$JANUS_API_PORT"
-            add_nova_opt "linuxnet_ovs_ryu_api_host=$JANUS_API_HOST:$JANUS_API_PORT"
+            NOVA_VIF_DRIVER="quantum.plugins.janus.nova.vif.LibvirtOpenVswitchOFPJanusDriver"
+            LINUXNET_VIF_DRIVER="quantum.plugins.janus.nova.linux_net.LinuxOVSJanusInterfaceDriver"
+            add_nova_opt "libvirt_ovs_janus_api_host=$JANUS_API_HOST:$JANUS_API_PORT"
+            add_nova_opt "linuxnet_ovs_janus_api_host=$JANUS_API_HOST:$JANUS_API_PORT"
         else
+            NOVA_VIF_DRIVER="quantum.plugins.ryu.nova.vif.LibvirtOpenVswitchOFPRyuDriver"
+            LINUXNET_VIF_DRIVER="quantum.plugins.ryu.nova.linux_net.LinuxOVSRyuInterfaceDriver"
             add_nova_opt "libvirt_ovs_ryu_api_host=$RYU_API_HOST:$RYU_API_PORT"
             add_nova_opt "linuxnet_ovs_ryu_api_host=$RYU_API_HOST:$RYU_API_PORT"
         fi
