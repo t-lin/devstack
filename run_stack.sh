@@ -7,10 +7,12 @@ TOP_DIR=$(cd $(dirname "$0") && pwd)
 source $TOP_DIR/functions
 source $TOP_DIR/stackrc
 source $TOP_DIR/localrc
+source $TOP_DIR/lib/keystone
 source $TOP_DIR/lib/nova
 source $TOP_DIR/lib/glance
 source $TOP_DIR/lib/cinder
 source $TOP_DIR/lib/quantum
+source $TOP_DIR/lib/janus
 source $TOP_DIR/lib/whale
 
 HORIZON_DIR=$DEST/horizon
@@ -81,6 +83,7 @@ sleep 1
 # Set a reasonable status bar
 screen -r $SCREEN_NAME -X hardstatus alwayslastline "$SCREEN_HARDSTATUS"
 
+echo test key "cd $KEYSTONE_DIR && $KEYSTONE_DIR/bin/keystone-all --config-file $KEYSTONE_CONF $KEYSTONE_LOG_CONFIG -d --debug"
 echo test  n-cpu "cd $NOVA_DIR && sg libvirtd $NOVA_BIN_DIR/nova-compute"
 echo test  n-crt "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-cert"
 echo test  n-net "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-network"
@@ -93,10 +96,10 @@ echo test  c-api "cd $CINDER_DIR && $CINDER_BIN_DIR/cinder-api --config-file $CI
 echo test  c-vol "cd $CINDER_DIR && $CINDER_BIN_DIR/cinder-volume --config-file $CINDER_CONF"
 echo test  c-sch "cd $CINDER_DIR && $CINDER_BIN_DIR/cinder-scheduler --config-file $CINDER_CONF"
 echo test  n-vol "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-volume"
-echo test neo4j "cd $GRAPH_DB_DIR && $GRAPH_DB_DIR/bin/neo4j console"
+echo test neo4j "cd $GRAPH_DB_DIR && $GRAPH_DB_DIR/neo4j-service console"
 echo test w-sync "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init --config-file $WHALE_CONF"
 echo test w-api "cd $WHALE_DIR && $WHALE_DIR/bin/whale-server --config-file $WHALE_CONF"
-echo test janus "cd $JANUS_DIR && $JANUS_DIR/bin/janus-init"
+echo test janus "cd $JANUS_DIR && $JANUS_DIR/bin/janus-init --config-file $JANUS_CONF "
 echo test  ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.ofctl_rest,ryu.app.ryu2janus,ryu.app.discovery,ryu.app.rest_discovery"
 echo test  n-api "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-api"
 echo test  q-svc "cd $QUANTUM_DIR && python $QUANTUM_DIR/bin/quantum-server --config-file $Q_CONF_FILE --config-file /$Q_PLUGIN_CONF_FILE"
@@ -109,10 +112,12 @@ echo test n-bmd "cd $NOVA_DIR && $NOVA_BIN_DIR/bm_deploy_server --config-dir=$BM
 echo test n-cpu-bm "cd $NOVA_DIR && sg libvirtd \"$NOVA_BIN_DIR/nova-compute --config-dir=$BM_CONF\" $NL"
 echo test n-cpu-bee2 "cd $NOVA_DIR && sg libvirtd \"$NOVA_BIN_DIR/nova-compute --config-dir=$BEE2_CONF\" $NL"
 
-screen_it neo4j "cd $GRAPH_DB_DIR && $GRAPH_DB_DIR/bin/neo4j console"
-screen_it w-sync "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init"
-screen_it w-api "cd $WHALE_DIR && $WHALE_DIR/bin/whale-server"
-screen_it janus "cd $JANUS_DIR && $JANUS_DIR/bin/janus-init"
+screen_it key "cd $KEYSTONE_DIR && $KEYSTONE_DIR/bin/keystone-all --config-file $KEYSTONE_CONF $KEYSTONE_LOG_CONFIG -d --debug"
+screen_it neo4j "cd $GRAPH_DB_DIR && sudo -u neo4j $GRAPH_DB_DIR/neo4j-service console"
+sleep 10
+screen_it w-sync "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init --config-file $WHALE_CONF"
+screen_it w-api "cd $WHALE_DIR && $WHALE_DIR/bin/whale-server --config-file $WHALE_CONF"
+screen_it janus "cd $JANUS_DIR && $JANUS_DIR/bin/janus-init --config-file $JANUS_CONF"
 screen_it  ryu "cd $RYU_DIR && $RYU_DIR/bin/ryu-manager --flagfile $RYU_CONF --app_lists ryu.app.ofctl_rest,ryu.app.ryu2janus,ryu.app.discovery,ryu.app.rest_discovery"
 sleep 5
 screen_it  n-api "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-api"

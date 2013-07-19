@@ -197,8 +197,7 @@ function start_graphdb() {
 function restart_graphdb() {
     echo_summary "Starting graph db"
     # copy properties to neo4j
-    cp -f $WHALE_DIR/etc/*.properties $GRAPH_DB_DIR/conf
-    screen_it neo4j "cd $GRAPH_DB_DIR && $GRAPH_DB_DIR/bin/neo4j console"
+    screen_it neo4j "cd $GRAPH_DB_DIR && sudo -u neo4j $GRAPH_DB_DIR/neo4j-service console"
     sleep 10
 }
 
