@@ -83,7 +83,9 @@ sleep 1
 # Set a reasonable status bar
 screen -r $SCREEN_NAME -X hardstatus alwayslastline "$SCREEN_HARDSTATUS"
 
-echo test key "cd $KEYSTONE_DIR && $KEYSTONE_DIR/bin/keystone-all --config-file $KEYSTONE_CONF $KEYSTONE_LOG_CONFIG -d --debug"
+if [[ $KEYSTONE_TYPE == "LOCAL" ]]; then
+    echo test key "cd $KEYSTONE_DIR && $KEYSTONE_DIR/bin/keystone-all --config-file $KEYSTONE_CONF $KEYSTONE_LOG_CONFIG -d --debug"
+fi
 echo test  n-cpu "cd $NOVA_DIR && sg libvirtd $NOVA_BIN_DIR/nova-compute"
 echo test  n-crt "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-cert"
 echo test  n-net "cd $NOVA_DIR && $NOVA_BIN_DIR/nova-network"
@@ -112,7 +114,9 @@ echo test n-bmd "cd $NOVA_DIR && $NOVA_BIN_DIR/bm_deploy_server --config-dir=$BM
 echo test n-cpu-bm "cd $NOVA_DIR && sg libvirtd \"$NOVA_BIN_DIR/nova-compute --config-dir=$BM_CONF\" $NL"
 echo test n-cpu-bee2 "cd $NOVA_DIR && sg libvirtd \"$NOVA_BIN_DIR/nova-compute --config-dir=$BEE2_CONF\" $NL"
 
-screen_it key "cd $KEYSTONE_DIR && $KEYSTONE_DIR/bin/keystone-all --config-file $KEYSTONE_CONF $KEYSTONE_LOG_CONFIG -d --debug"
+if [[ $KEYSTONE_TYPE == "LOCAL" ]]; then
+    screen_it key "cd $KEYSTONE_DIR && $KEYSTONE_DIR/bin/keystone-all --config-file $KEYSTONE_CONF $KEYSTONE_LOG_CONFIG -d --debug"
+fi
 screen_it neo4j "cd $GRAPH_DB_DIR && sudo -u neo4j $GRAPH_DB_DIR/neo4j-service console"
 sleep 10
 screen_it w-sync "cd $WHALE_DIR && $WHALE_DIR/bin/whale-init --config-file $WHALE_CONF"
