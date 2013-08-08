@@ -170,7 +170,7 @@ JANUS_BRANCH=savi-2.1
 
 # JANUS CLIENT
 JANUSCLIENT_REPO=https://github.com/savi-dev/python-janusclient.git
-JANUSCLIENT_BRANCH=master
+JANUSCLIENT_BRANCH=savi-2.1
 
 # WHALE
 WHALE_REPO=https://github.com/savi-dev/whale.git
@@ -178,4 +178,4 @@ WHALE_BRANCH=savi-2.1
 
 # WHALE CLIENT
 WHALECLIENT_REPO=https://github.com/savi-dev/python-whaleclient.git
-WHALECLIENT_BRANCH=master
+WHALECLIENT_BRANCH=savi-2.1
