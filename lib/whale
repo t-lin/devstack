@@ -170,7 +170,7 @@ function install_whale() {
 
 # install_whale() - Collect source and prepare
 function install_whaleclient() {
-    git_clone $WHALE_CLIENT_REPO $WHALECLIENT_DIR $WHALECLIENT_BRANCH
+    git_clone $WHALECLIENT_REPO $WHALECLIENT_DIR $WHALECLIENT_BRANCH
 }
 
 # start_graphdb() - Start running processes, including screen
