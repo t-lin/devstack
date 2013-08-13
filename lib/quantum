@@ -21,6 +21,7 @@ function quantum_setup_keystone() {
     iniset $conf_file $section admin_user $Q_ADMIN_USERNAME
     iniset $conf_file $section admin_password $SERVICE_PASSWORD
     iniset $conf_file $section auth_region $REGION_NAME
+    
 }
 
 function quantum_setup_ovs_bridge() {

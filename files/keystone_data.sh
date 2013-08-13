@@ -500,12 +500,12 @@ fi
 
 # Janus 
 if [[ "$ENABLED_SERVICES" =~ "janus" ]]; then
-    keystone policy-create --policy $JANUS_POLICY_FILE --service-id $JANUS_SERVICE
+    keystone policy-create --policy $JANUS_POLICY_FILE --service $JANUS_SERVICE
 fi
 
 # Whale
 if [[ "$ENABLED_SERVICES" =~ "whale" ]]; then
-    keystone policy-create --policy $WHALE_POLICY_FILE --service-id $WHALE_SERVICE
+    keystone policy-create --policy $WHALE_POLICY_FILE --service $WHALE_SERVICE
 fi
 
 
