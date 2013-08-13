@@ -1417,6 +1417,12 @@ if is_service_enabled q-svc; then
 
     iniset $Q_CONF_FILE DEFAULT auth_strategy $Q_AUTH_STRATEGY
     quantum_setup_keystone $Q_API_PASTE_FILE filter:authtoken
+    quantum_setup_keystone $Q_API_PASTE_FILE filter:authz
+
+    if [[ -n $REMOTE_USERS ]]; then
+        iniset $Q_API_PASTE_FILE filter:authtoken remote_users $REMOTE_USERS
+    fi
+
 
     # Configure plugin
     if [[ "$Q_PLUGIN" = "openvswitch" ]]; then
@@ -1831,6 +1837,7 @@ if is_service_enabled swift; then
     SWIFT_CONFIG_PROXY_SERVER=${SWIFT_CONFIG_DIR}/proxy-server.conf
     cp ${SWIFT_DIR}/etc/proxy-server.conf-sample ${SWIFT_CONFIG_PROXY_SERVER}
 
+    iniuncomment ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT log_name
     iniuncomment ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT user
     iniset ${SWIFT_CONFIG_PROXY_SERVER} DEFAULT user ${USER}
 
@@ -1855,6 +1862,7 @@ if is_service_enabled swift; then
 
     # Configure Keystone
     sed -i '/^# \[filter:authtoken\]/,/^# \[filter:keystoneauth\]$/ s/^#[ \t]*//' ${SWIFT_CONFIG_PROXY_SERVER}
+    iniset ${SWIFT_CONFIG_PROXY_SERVER} filter:authtoken paste.filter_factory keystoneclient.middleware.auth_token:filter_factory
     iniset ${SWIFT_CONFIG_PROXY_SERVER} filter:authtoken auth_host $KEYSTONE_AUTH_HOST
     iniset ${SWIFT_CONFIG_PROXY_SERVER} filter:authtoken auth_port $KEYSTONE_AUTH_PORT
     iniset ${SWIFT_CONFIG_PROXY_SERVER} filter:authtoken auth_protocol $KEYSTONE_AUTH_PROTOCOL
@@ -2017,7 +2025,7 @@ if is_service_enabled quantum; then
     add_nova_opt "quantum_admin_password=$SERVICE_PASSWORD"
     add_nova_opt "quantum_admin_auth_url=$KEYSTONE_SERVICE_PROTOCOL://$KEYSTONE_SERVICE_HOST:$KEYSTONE_AUTH_PORT/v2.0"
     add_nova_opt "quantum_admin_auth_region=$REGION_NAME"
-    add_nova_opt "quantum_auth_strategy=$Q_AUTH_STRATEGY"
+    add_nova_opt "quantum_auth_strategy=$NOVA_Q_AUTH_STRATEGY"
     add_nova_opt "quantum_admin_tenant_name=$SERVICE_TENANT_NAME"
     add_nova_opt "quantum_url=http://$Q_HOST:$Q_PORT"
 
@@ -2116,15 +2124,16 @@ else
     LIBVIRT_FIREWALL_DRIVER=${LIBVIRT_FIREWALL_DRIVER:-"nova.virt.libvirt.firewall.IptablesFirewallDriver"}
     add_nova_opt "firewall_driver=$LIBVIRT_FIREWALL_DRIVER"
     add_nova_opt "libvirt_use_virtio_for_bridges=True"
-    add_nova_opt "#start_guests_on_host_boot=true"
-    add_nova_opt "#resume_guests_state_on_host_boot=true"
+
+    add_nova_opt "resume_guests_state_on_host_boot=true"
     add_nova_opt "use_cow_images=true"
     add_nova_opt "running_deleted_instance_action=reap"
     add_nova_opt "rescue_timeout=0"
     add_nova_opt "reboot_timeout=0"
-    add_nova_opt "running_deleted_instance_timeout=0"
-    add_nova_opt "running_deleted_instance_poll_interval=30"
+    add_nova_opt "running_deleted_instance_poll_interval=5"
     add_nova_opt "libvirt_wait_soft_reboot_seconds=60"
+    add_nova_opt "running_deleted_instance_timeout=120"
+
 fi
 
 
